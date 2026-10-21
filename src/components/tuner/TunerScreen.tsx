@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronDownIcon, MicIcon, MicOffIcon, PaletteIcon } from "@/components/ui/icons";
 import { sweepCents, useDemo } from "@/lib/audio/demo";
 import { tunerEngine } from "@/lib/audio/engine";
+import { keepScreenAwake } from "@/lib/audio/screenAwake";
 import { PLUCK_DURATION_MS, playChime, playNotes } from "@/lib/audio/tonePlayer";
 import { initialFeedback, shouldChime } from "@/lib/audio/tuneFeedback";
 import { useTuner } from "@/lib/audio/useTuner";
@@ -38,6 +39,9 @@ export function TunerScreen() {
     void tunerEngine.start();
     return () => tunerEngine.stop();
   }, [hydrated, tuner.demo]);
+
+  // The screen stays on while the tuner is shown: hands are on the guitar, not the phone.
+  useEffect(() => keepScreenAwake(), []);
 
   // One short buzz and a soft chime when a string reaches in tune: once per note
   // (see tuneFeedback.ts for the debounce rules).

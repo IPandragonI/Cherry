@@ -65,7 +65,7 @@ src/
     serwist/[path]/    route that builds and serves the service worker
   components/          tuner/ (Gauge, Neck, Readout, StringPills, pickers), chords/, finder/, ui/
   lib/
-    audio/             pitch-worklet, engine (mic + wake lock), useTuner, Karplus-Strong, demo
+    audio/             pitch-worklet, engine (mic), screenAwake, useTuner, Karplus-Strong, demo
     pitch/             biquad filters, PitchAnalyzer (pitchy), PitchTracker (median + stability gate)
     music/             notes/cents, tunings, chord formulas, recognizer, shape generator, chords.json
     i18n/              FR/EN dictionaries + useT()
@@ -90,7 +90,12 @@ draws. The analysis is pure TypeScript shared by the worker and the tests:
    harmonics, as the ear's is, rather than by the fundamental, which an acoustic guitar's
    body pulls a few cents flat. Nothing is shown when no harmonic consensus confirms the
    pitch.
-4. Tracker: outliers ignored unless 3 frames confirm a jump, 7-frame median, adaptive EMA.
+4. Tracker: outliers ignored unless 3 frames confirm a jump, 9-frame median, adaptive EMA;
+   a note is only shown shortly after a pluck (or sound rising out of silence), and its
+   value freezes once it has decayed by ~18 dB, so the quiet tail and strings ringing
+   along never move the gauge.
+5. Display: the last value stays on screen for 4 s after the note fades, and changes under
+   1 cent are not shown (`src/lib/audio/readingHold.ts`).
 
 The UI adds in-tune hysteresis (enter ≤ 8 cents, leave > 10 cents). Accuracy tests:
 `tests/calibration.test.ts`, `tests/accuracy.test.ts`, `tests/acoustic.test.ts` (an
@@ -130,6 +135,8 @@ CLI alternative: `pnpm dlx vercel` (preview) / `pnpm dlx vercel --prod`.
   home-screen web app it may be asked on each launch.
 - Safari suspends audio when the app goes to the background. Cherry resumes the context when
   it becomes visible again, but you may need to tap Start again after a phone call.
-- Screen Wake Lock needs iOS 16.4+, and `navigator.vibrate` isn't supported on iOS, so the
-  in-tune haptic is Android-only.
+- The screen stays on while the tuner is shown: Screen Wake Lock, re-taken whenever the OS
+  drops it, plus a silent looping video (NoSleep.js technique) in home-screen apps, where
+  iOS before 18.4 ignores the wake lock. Low Power Mode can still let the screen sleep.
+- `navigator.vibrate` isn't supported on iOS, so the in-tune haptic is Android-only.
 - Install from Safari's **Share → Add to Home Screen**. There is no install prompt.

@@ -92,6 +92,7 @@ export class PitchAnalyzer {
   private noiseFloor = 0.0002;
   /** RMS of the most recent hop, to spot plucks. */
   private lastHopRms = 0;
+  private wasAudible = false;
   /** Hops still to skip after the latest pluck. */
   private attackLeft = 0;
   /** Latest period estimate, to notice note changes without a new attack. */
@@ -106,7 +107,8 @@ export class PitchAnalyzer {
   ) {
     this.options = { ...defaultAnalyzerOptions(sampleRate), ...options };
     const { windowSize, spectrumSize, hopSize, highpassHz, lowpassHz, humHz } = this.options;
-    const tracker = { ...DEFAULT_TRACKER_OPTIONS, ...this.options.tracker };
+    // Only a plucked note is shown, within ~1.3 s of its pluck (at 48 kHz).
+    const tracker = { ...DEFAULT_TRACKER_OPTIONS, armFrames: 60, ...this.options.tracker };
     this.detector = new BandedMpm(
       windowSize,
       sampleRate,
@@ -160,6 +162,7 @@ export class PitchAnalyzer {
 
   /** A pluck or a note change: skip the attack and restart the phase measurements. */
   private newNote() {
+    this.tracker.attack();
     this.attackLeft = this.options.attackHops;
     this.lastCoarse = null;
     this.pendingCoarse = null;
@@ -217,7 +220,13 @@ export class PitchAnalyzer {
       hopRms > this.lastHopRms * onsetRatio &&
       hopRms > this.noiseFloor * onsetSignalToNoise;
     if (pluck) this.newNote();
+    // Sound emerging from silence, too faint to be sure it is a pluck (quiet desktop mic),
+    // may still be shown; sound that never rose (strings ringing along) may not.
+    else if (audible && (!this.wasAudible || hopRms > this.lastHopRms * onsetRatio)) {
+      this.tracker.arm();
+    }
     this.lastHopRms = hopRms;
+    this.wasAudible = audible;
 
     let coarse = audible && this.attackLeft === 0 ? this.detector.estimate(window) : null;
     // A different note without a new attack (hammer-on, the next string while the last

@@ -36,6 +36,13 @@ export interface TrackerOptions {
   movingAlpha: number;
   /** Deviation (cents) from the smoothed value at which the EMA becomes fully "moving". */
   movingCents: number;
+  /**
+   * Once the note has decayed below this fraction of its peak level, the value is frozen:
+   * the quiet tail (and strings ringing along) only make it wander.
+   */
+  decayFreezeRatio: number;
+  /** A pitch can only lock on within this many frames of {@link PitchTracker.arm}. */
+  armFrames: number;
 }
 
 export const DEFAULT_TRACKER_OPTIONS: TrackerOptions = {
@@ -54,6 +61,8 @@ export const DEFAULT_TRACKER_OPTIONS: TrackerOptions = {
   steadyAlpha: 0.08,
   movingAlpha: 0.7,
   movingCents: 20,
+  decayFreezeRatio: 0.12,
+  armFrames: Infinity,
 };
 
 export function median(values: readonly number[]): number {
@@ -80,14 +89,30 @@ export class PitchTracker {
   private candidates: number[] = [];
   /** Smoothed pitch as log2(frequency), null until locked. */
   private smoothed: number | null = null;
+  /** Loudest frame of the current note. */
+  private peakRms = 0;
+  /** Frames since the latest pluck. */
+  private sinceAttack = Infinity;
 
   constructor(options: Partial<TrackerOptions> = {}) {
     this.options = { ...DEFAULT_TRACKER_OPTIONS, ...options };
   }
 
+  /** A new pluck: the next pitch may lock on, and its level is measured afresh. */
+  attack(): void {
+    this.arm();
+    this.peakRms = 0;
+  }
+
+  /** The level rose (maybe a quiet pluck): the next pitch may lock on. */
+  arm(): void {
+    this.sinceAttack = 0;
+  }
+
   /** Returns the smoothed frequency, or null when there is no stable pitch. */
   update(raw: RawPitch | null): number | null {
     const o = this.options;
+    this.sinceAttack++;
     const valid =
       raw !== null &&
       raw.clarity >= (this.locked ? o.sustainClarity : o.minClarity) &&
@@ -101,6 +126,10 @@ export class PitchTracker {
       return this.output();
     }
     this.invalidFrames = 0;
+
+    // The note is dying out: keep showing the value it had rather than follow the tail.
+    if (this.locked && raw.rms < this.peakRms * o.decayFreezeRatio) return this.output();
+    this.peakRms = Math.max(this.peakRms, raw.rms);
 
     if (this.history.length > 0) {
       const current = median(this.history);
@@ -126,6 +155,8 @@ export class PitchTracker {
     if (this.history.length > o.medianSize) this.history.shift();
 
     if (!this.locked) {
+      // Without a recent pluck it is background sound (a string ringing along, noise).
+      if (this.sinceAttack > o.armFrames) return null;
       const recent = this.history.slice(-o.lockFrames);
       if (recent.length < o.lockFrames) return null;
       const center = median(recent);
@@ -157,6 +188,7 @@ export class PitchTracker {
     this.smoothed = null;
     this.candidates = [];
     this.medians = [];
+    this.peakRms = 0;
   }
 
   private output(): number | null {

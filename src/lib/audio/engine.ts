@@ -1,6 +1,7 @@
 import type { PitchReading } from "../pitch/analyzer";
 import type { WorkerCommand, WorkerEvent } from "./pitch-worker";
 import { setRecording } from "./audioSession";
+import { ReadingHold } from "./readingHold";
 
 export type MicStatus =
   | "idle"
@@ -111,7 +112,7 @@ class TunerEngine {
   private stream: MediaStream | null = null;
   private worker: Worker | null = null;
   private onRecording: ((samples: Float32Array, sampleRate: number) => void) | null = null;
-  private wakeLock: WakeLockSentinel | null = null;
+  private readonly hold = new ReadingHold();
   private watchdog: ReturnType<typeof setInterval> | null = null;
   private lastMessageAt = 0;
   private suppressedUntil = 0;
@@ -205,6 +206,7 @@ class TunerEngine {
   /** Ignores the microphone for a while, e.g. while a reference tone is playing. */
   suppress(ms: number): void {
     this.suppressedUntil = performance.now() + ms;
+    this.hold.reset();
     this.setSnapshot({ frequency: null });
   }
 
@@ -290,7 +292,6 @@ class TunerEngine {
       this.watchdog = setInterval(() => this.checkHealth(session), WATCHDOG_MS);
       GESTURES.forEach((g) => document.addEventListener(g, this.onGesture, true));
       this.syncState();
-      void this.acquireWakeLock();
     } catch (error) {
       if (session === this.session) {
         this.teardown();
@@ -316,8 +317,7 @@ class TunerEngine {
     if (this.ctx) this.ctx.onstatechange = null;
     void this.ctx?.close().catch(() => {});
     this.ctx = null;
-    void this.wakeLock?.release().catch(() => {});
-    this.wakeLock = null;
+    this.hold.reset();
   }
 
   private isHealthy(): boolean {
@@ -353,9 +353,10 @@ class TunerEngine {
   private onReading(reading: PitchReading) {
     this.lastMessageAt = performance.now();
     if (this.snapshot.status !== "running") return;
-    const muted = performance.now() < this.suppressedUntil;
+    const now = performance.now();
+    const muted = now < this.suppressedUntil;
     this.setSnapshot({
-      frequency: muted ? null : reading.frequency,
+      frequency: muted ? null : this.hold.update(reading.frequency, now),
       level: Math.round(reading.rms * 1000) / 1000,
     });
   }
@@ -378,7 +379,6 @@ class TunerEngine {
     if (!pageVisible() || !this.wanted || this.userDisabled) return;
     if (this.isHealthy()) {
       if (this.ctx?.state !== "running") void this.ctx?.resume();
-      void this.acquireWakeLock();
       return;
     }
     if (!this.connecting) void this.connect();
@@ -398,16 +398,6 @@ class TunerEngine {
     window.removeEventListener("pagehide", this.onHidden);
     window.removeEventListener("pageshow", this.onShown);
     window.removeEventListener("focus", this.onShown);
-  }
-
-  private async acquireWakeLock() {
-    if (!("wakeLock" in navigator) || this.wakeLock) return;
-    try {
-      this.wakeLock = await navigator.wakeLock.request("screen");
-      this.wakeLock.addEventListener("release", () => (this.wakeLock = null));
-    } catch {
-      // Not granted (e.g. low battery mode): tuning still works.
-    }
   }
 }
 

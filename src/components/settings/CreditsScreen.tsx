@@ -21,6 +21,7 @@ const TECH: { name: string; url: string; role: MessageKey }[] = [
   { name: "Zustand", url: "https://github.com/pmndrs/zustand", role: "credits.tech.zustand" },
   { name: "pitchy", url: "https://github.com/ianprime0509/pitchy", role: "credits.tech.pitchy" },
   { name: "fft.js", url: "https://github.com/indutny/fft.js", role: "credits.tech.fft" },
+  { name: "NoSleep.js", url: "https://github.com/richtr/NoSleep.js", role: "credits.tech.nosleep" },
   { name: "Serwist", url: "https://serwist.pages.dev", role: "credits.tech.serwist" },
   {
     name: "Fraunces",

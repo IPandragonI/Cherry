@@ -172,6 +172,21 @@ describe("PitchTracker", () => {
     expect(frames).toBeLessThanOrEqual(20);
   });
 
+  it("freezes the value once the note has died down (no wandering tail)", () => {
+    const t = new PitchTracker({ lockFrames: 1 });
+    for (let i = 0; i < 10; i++) t.update(frame(110, 0.97, 0.1));
+    for (let i = 0; i < 30; i++) {
+      expect(t.update(frame(110 * 2 ** (6 / 1200), 0.8, 0.005))).toBeCloseTo(110, 6);
+    }
+  });
+
+  it("only locks onto a sound shortly after it was armed by a pluck", () => {
+    const t = new PitchTracker({ lockFrames: 1, armFrames: 5 });
+    expect(t.update(frame(110))).toBeNull(); // never armed: background sound
+    t.arm();
+    expect(t.update(frame(110))).toBeCloseTo(110, 9);
+  });
+
   it("holds the last value through short dropouts, then releases", () => {
     const t = new PitchTracker({ lockFrames: 1, holdFrames: 2 });
     t.update(frame(110));
