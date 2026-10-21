@@ -163,8 +163,9 @@
   mask-composite: intersect;
 }
 
-.dot-field[data-in-tune="true"] {
-  --dot-color: color-mix(in oklab, var(--tuner-ok) 50%, transparent);
+/* In tune: the field (and the trail drawn over it) stops, like a held breath. */
+.dot-field[data-frozen="true"] .dot-field-dots {
+  animation-play-state: paused;
 }
 
 .dot-field-dots {

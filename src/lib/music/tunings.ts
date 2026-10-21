@@ -1,4 +1,11 @@
-import { centsBetween, midiToFrequency, noteName, parseNote } from "./notes";
+import {
+  centsBetween,
+  midiToFrequency,
+  noteLabel,
+  noteName,
+  parseNote,
+  type Notation,
+} from "./notes";
 
 export interface Tuning {
   id: string;
@@ -61,4 +68,14 @@ export function closestString(frequency: number, strings: number[], a4: number):
     if (Math.abs(cents) < Math.abs(best.cents)) best = { index, cents };
   });
   return best;
+}
+
+/** String labels in a notation; the highest string is lower-cased when it repeats the lowest. */
+export function stringLabelsIn(strings: number[], notation: Notation): string[] {
+  const names = strings.map((m) => noteLabel(m, notation));
+  const last = names.length - 1;
+  if (last > 0 && names[last] === names[0]) {
+    names[last] = names[last].charAt(0).toLowerCase() + names[last].slice(1);
+  }
+  return names;
 }

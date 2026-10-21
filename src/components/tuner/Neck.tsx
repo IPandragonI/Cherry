@@ -33,12 +33,28 @@ const HARDWARE = {
   gold: ["#f6e2a4", "#b48a35", "#e9cd7f"],
 } as const;
 
-/** viewBox framing a model: its headstock and buttons, the nut and the first fret. */
-export function neckViewBox(model: HeadstockModel): string {
-  const minX = Math.min(model.bounds.minX, CX - NUT_HALF - 10) - 4;
-  const maxX = Math.max(model.bounds.maxX, CX + NUT_HALF + 10) + 4;
-  const minY = model.bounds.minY - 6;
+/** viewBox framing a model: headstock, buttons, string indicators, nut and first fret. */
+function neckViewBox(
+  model: HeadstockModel,
+  pegs: { x: number; y: number; r: number }[] | null,
+  mirrored: boolean,
+): string {
+  const mirror = (x: number) => (mirrored ? 2 * CX - x : x);
+  const drawn = [mirror(model.bounds.minX), mirror(model.bounds.maxX)];
+  const xs = [...drawn, CX - NUT_HALF - 10, CX + NUT_HALF + 10];
+  for (const p of pegs ?? []) xs.push(p.x - p.r, p.x + p.r);
+  const minX = Math.min(...xs) - 4;
+  const maxX = Math.max(...xs) + 4;
+  const minY = Math.min(model.bounds.minY, ...(pegs ?? []).map((p) => p.y - p.r)) - 6;
   return `${minX.toFixed(1)} ${minY.toFixed(1)} ${(maxX - minX).toFixed(1)} ${(BOTTOM - minY).toFixed(1)}`;
+}
+
+/** String indicator buttons drawn next to the tuner buttons. */
+export interface PegLabels {
+  labels: string[];
+  ariaLabels: string[];
+  selected: number | null;
+  onSelect: (index: number) => void;
 }
 
 interface NeckProps {
@@ -48,10 +64,49 @@ interface NeckProps {
   /** Highlighted string (0 = lowest), or null. */
   target: number | null;
   inTune: boolean;
+  /** Mirror the drawing for left-handed players (labels stay readable). */
+  mirrored?: boolean;
+  /** Show the string indicators by the pegs. */
+  pegLabels?: PegLabels;
   className?: string;
 }
 
-export function Neck({ skin, model: modelId, strings, target, inTune, className }: NeckProps) {
+const PEG_GAP = 6;
+const MAX_PEG_RADIUS = 30;
+
+/** Indicator circle beside each tuner button, as large as the peg spacing allows. */
+function pegPositions(model: HeadstockModel, strings: number, mirrored: boolean) {
+  const keys = Array.from({ length: strings }, (_, i) => ({
+    index: i,
+    key: model.key(i, strings),
+    post: model.post(i, strings),
+  }));
+  let spacing = Infinity;
+  for (const a of keys) {
+    for (const b of keys) {
+      const sameSide = Math.sign(a.key.x - a.post.x) === Math.sign(b.key.x - b.post.x);
+      if (a !== b && sameSide)
+        spacing = Math.min(spacing, Math.hypot(a.key.x - b.key.x, a.key.y - b.key.y));
+    }
+  }
+  const r = Math.min(MAX_PEG_RADIUS, spacing / 2 - 2);
+  return keys.map(({ index, key, post }) => {
+    const side = key.x < post.x ? -1 : 1;
+    const x = key.x + side * (model.keySize.w / 2 + PEG_GAP + r);
+    return { index, x: mirrored ? 2 * CX - x : x, y: key.y, r };
+  });
+}
+
+export function Neck({
+  skin,
+  model: modelId,
+  strings,
+  target,
+  inTune,
+  mirrored = false,
+  pegLabels,
+  className,
+}: NeckProps) {
   const id = useId().replace(/:/g, "");
   const model = HEADSTOCKS[modelId];
   const ref = (name: string) => `${name}-${id}`;
@@ -60,14 +115,23 @@ export function Neck({ skin, model: modelId, strings, target, inTune, className 
   const indexes = Array.from({ length: strings }, (_, i) => i);
   const metal = HARDWARE[model.hardware];
   const boardBottom = halfWidthAt(BOTTOM);
+  const selected = pegLabels?.selected ?? null;
+  const onSelect = pegLabels?.onSelect;
+  const pegs = pegLabels
+    ? pegPositions(model, strings, mirrored).map((p) => ({
+        ...p,
+        label: pegLabels.labels[p.index] ?? "",
+        ariaLabel: pegLabels.ariaLabels[p.index] ?? "",
+      }))
+    : null;
 
   return (
     <svg
-      viewBox={neckViewBox(model)}
+      viewBox={neckViewBox(model, pegs, mirrored)}
       className={className ?? "neck mx-auto block h-full w-auto max-w-full"}
       data-skin={skin}
       data-model={modelId}
-      aria-hidden="true"
+      {...(pegs ? { role: "group" } : { "aria-hidden": true })}
     >
       <defs>
         <linearGradient id={ref("wood")} x1="0" x2="1">
@@ -106,151 +170,206 @@ export function Neck({ skin, model: modelId, strings, target, inTune, className 
         </filter>
       </defs>
 
-      {/* Tuner shafts and buttons, behind the headstock */}
-      {indexes.map((i) => {
-        const p = model.post(i, strings);
-        const k = model.key(i, strings);
-        const angle = (Math.atan2(k.y - p.y, k.x - p.x) * 180) / Math.PI;
-        const length = Math.hypot(k.x - p.x, k.y - p.y);
-        return (
-          <g key={`key-${i}`}>
-            <rect
-              x={0}
-              y={-2.6}
-              width={length}
-              height={5.2}
-              rx={2.6}
-              fill={`url(#${ref("metal")})`}
-              transform={`translate(${p.x} ${p.y}) rotate(${angle})`}
-            />
-            <TunerKey model={model} x={k.x} y={k.y} angle={angle} fill={ref("button")} />
-          </g>
-        );
-      })}
+      <g aria-hidden="true" transform={mirrored ? `translate(${2 * CX} 0) scale(-1 1)` : undefined}>
+        {/* Tuner shafts and buttons, behind the headstock */}
+        {indexes.map((i) => {
+          const p = model.post(i, strings);
+          const k = model.key(i, strings);
+          const angle = (Math.atan2(k.y - p.y, k.x - p.x) * 180) / Math.PI;
+          const length = Math.hypot(k.x - p.x, k.y - p.y);
+          return (
+            <g key={`key-${i}`}>
+              <rect
+                x={0}
+                y={-2.6}
+                width={length}
+                height={5.2}
+                rx={2.6}
+                fill={`url(#${ref("metal")})`}
+                transform={`translate(${p.x} ${p.y}) rotate(${angle})`}
+              />
+              <TunerKey model={model} x={k.x} y={k.y} angle={angle} fill={ref("button")} />
+            </g>
+          );
+        })}
 
-      {/* Headstock */}
-      <path
-        d={model.outline}
-        fill={`url(#${ref("face")})`}
-        stroke={model.bound ? "var(--nut)" : "rgb(0 0 0 / 0.35)"}
-        strokeWidth={model.bound ? 4.5 : 1.2}
-        strokeLinejoin="round"
-      />
-      {model.bound && (
-        // Multi-ply binding: a thin dark line inside the cream edge.
+        {/* Headstock */}
         <path
           d={model.outline}
-          fill="none"
-          stroke="rgb(0 0 0 / 0.55)"
-          strokeWidth={0.8}
-          transform={`translate(${CX} ${NUT_Y}) scale(0.975) translate(${-CX} ${-NUT_Y})`}
+          fill={`url(#${ref("face")})`}
+          stroke={model.bound ? "var(--nut)" : "rgb(0 0 0 / 0.35)"}
+          strokeWidth={model.bound ? 4.5 : 1.2}
+          strokeLinejoin="round"
         />
-      )}
-      {model.ornament && (
-        <Ornament
-          model={modelId}
-          at={model.ornament.at}
-          size={model.ornament.size}
-          pearl={`url(#${ref("pearl")})`}
-        />
-      )}
-      {model.truss && <TrussCover {...model.truss} />}
-
-      {/* Fingerboard down to the first fret */}
-      <path
-        d={`M${CX - NUT_HALF},${BOARD_TOP} L${CX + NUT_HALF},${BOARD_TOP} L${CX + boardBottom},${BOTTOM} L${CX - boardBottom},${BOTTOM} Z`}
-        fill={`url(#${ref("wood")})`}
-        stroke={model.bound ? "var(--nut)" : "none"}
-        strokeWidth={model.bound ? 3 : 0}
-      />
-      <line
-        x1={CX - halfWidthAt(FRET_Y)}
-        x2={CX + halfWidthAt(FRET_Y)}
-        y1={FRET_Y}
-        y2={FRET_Y}
-        strokeWidth={3}
-        style={{ stroke: "var(--fret)" }}
-      />
-
-      {/* Nut */}
-      <rect
-        x={CX - NUT_HALF - 1}
-        y={NUT_Y}
-        width={NUT_WIDTH + 2}
-        height={NUT_H}
-        rx={1.5}
-        style={{ fill: "var(--nut)" }}
-      />
-
-      {/* Strings: tuner post → nut → down the neck */}
-      {indexes.map((i) => {
-        const p = model.post(i, strings);
-        const d = `M${p.x},${p.y} L${stringX(i, strings, BOARD_TOP)},${NUT_Y} L${stringX(i, strings, BOTTOM)},${BOTTOM}`;
-        const active = i === target;
-        return (
-          <g key={`s-${i}`}>
-            <path
-              d={d}
-              fill="none"
-              stroke="rgb(0 0 0 / 0.28)"
-              strokeWidth={thickness(i) + 1}
-              transform="translate(1.2,1.2)"
-            />
-            <path
-              d={d}
-              fill="none"
-              stroke={active ? accent : "var(--tuner-string)"}
-              strokeWidth={active ? thickness(i) + 1.2 : thickness(i)}
-              filter={active ? `url(#${ref("glow")})` : undefined}
-              strokeLinejoin="round"
-              className="transition-[stroke] duration-200"
-            />
-          </g>
-        );
-      })}
-
-      {model.stringTree && (
-        <g>
-          <circle
-            cx={model.stringTree.x}
-            cy={model.stringTree.y}
-            r={6}
-            fill={`url(#${ref("metal")})`}
-            stroke="rgb(0 0 0 / 0.3)"
+        {model.bound && (
+          // Multi-ply binding: a thin dark line inside the cream edge.
+          <path
+            d={model.outline}
+            fill="none"
+            stroke="rgb(0 0 0 / 0.55)"
+            strokeWidth={0.8}
+            transform={`translate(${CX} ${NUT_Y}) scale(0.975) translate(${-CX} ${-NUT_Y})`}
           />
-          <circle cx={model.stringTree.x} cy={model.stringTree.y} r={1.6} fill="#6f695f" />
-        </g>
-      )}
+        )}
+        {model.ornament && (
+          <Ornament
+            model={modelId}
+            at={model.ornament.at}
+            size={model.ornament.size}
+            pearl={`url(#${ref("pearl")})`}
+          />
+        )}
+        {model.truss && <TrussCover {...model.truss} />}
 
-      {/* Tuner posts with bushings (over the strings) */}
-      {indexes.map((i) => {
-        const p = model.post(i, strings);
-        const active = i === target;
-        return (
-          <g key={`post-${i}`}>
-            {model.keyStyle === "ebony" && (
-              // Hex nut around the bushing.
+        {/* Fingerboard down to the first fret */}
+        <path
+          d={`M${CX - NUT_HALF},${BOARD_TOP} L${CX + NUT_HALF},${BOARD_TOP} L${CX + boardBottom},${BOTTOM} L${CX - boardBottom},${BOTTOM} Z`}
+          fill={`url(#${ref("wood")})`}
+          stroke={model.bound ? "var(--nut)" : "none"}
+          strokeWidth={model.bound ? 3 : 0}
+        />
+        <line
+          x1={CX - halfWidthAt(FRET_Y)}
+          x2={CX + halfWidthAt(FRET_Y)}
+          y1={FRET_Y}
+          y2={FRET_Y}
+          strokeWidth={3}
+          style={{ stroke: "var(--fret)" }}
+        />
+
+        {/* Nut */}
+        <rect
+          x={CX - NUT_HALF - 1}
+          y={NUT_Y}
+          width={NUT_WIDTH + 2}
+          height={NUT_H}
+          rx={1.5}
+          style={{ fill: "var(--nut)" }}
+        />
+
+        {/* Strings: tuner post → nut → down the neck */}
+        {indexes.map((i) => {
+          const p = model.post(i, strings);
+          const d = `M${p.x},${p.y} L${stringX(i, strings, BOARD_TOP)},${NUT_Y} L${stringX(i, strings, BOTTOM)},${BOTTOM}`;
+          const active = i === target;
+          return (
+            <g key={`s-${i}`}>
               <path
-                d={hexagon(p.x, p.y, 9)}
-                fill={`url(#${ref("metal")})`}
-                stroke="rgb(0 0 0 / 0.3)"
+                d={d}
+                fill="none"
+                stroke="rgb(0 0 0 / 0.28)"
+                strokeWidth={thickness(i) + 1}
+                transform="translate(1.2,1.2)"
               />
-            )}
+              <path
+                d={d}
+                fill="none"
+                stroke={active ? accent : "var(--tuner-string)"}
+                strokeWidth={active ? thickness(i) + 1.2 : thickness(i)}
+                filter={active ? `url(#${ref("glow")})` : undefined}
+                strokeLinejoin="round"
+                className="transition-[stroke] duration-200"
+              />
+            </g>
+          );
+        })}
+
+        {model.stringTree && (
+          <g>
             <circle
-              cx={p.x}
-              cy={p.y}
-              r={7.5}
+              cx={model.stringTree.x}
+              cy={model.stringTree.y}
+              r={6}
               fill={`url(#${ref("metal")})`}
-              stroke="rgb(0 0 0 / 0.35)"
+              stroke="rgb(0 0 0 / 0.3)"
             />
+            <circle cx={model.stringTree.x} cy={model.stringTree.y} r={1.6} fill="#6f695f" />
+          </g>
+        )}
+
+        {/* Tuner posts with bushings (over the strings) */}
+        {indexes.map((i) => {
+          const p = model.post(i, strings);
+          const active = i === target;
+          return (
+            <g key={`post-${i}`}>
+              {model.keyStyle === "ebony" && (
+                // Hex nut around the bushing.
+                <path
+                  d={hexagon(p.x, p.y, 9)}
+                  fill={`url(#${ref("metal")})`}
+                  stroke="rgb(0 0 0 / 0.3)"
+                />
+              )}
+              <circle
+                cx={p.x}
+                cy={p.y}
+                r={7.5}
+                fill={`url(#${ref("metal")})`}
+                stroke="rgb(0 0 0 / 0.35)"
+              />
+              <circle
+                cx={p.x}
+                cy={p.y}
+                r={3.8}
+                fill={metal[2]}
+                stroke={active ? accent : "rgb(0 0 0 / 0.4)"}
+                strokeWidth={active ? 2.4 : 1}
+              />
+            </g>
+          );
+        })}
+      </g>
+
+      {pegs?.map((peg) => {
+        const active = peg.index === selected;
+        const fill = active
+          ? inTune
+            ? "var(--color-success)"
+            : "var(--color-primary)"
+          : "var(--color-base-200)";
+        const ink = active
+          ? inTune
+            ? "var(--color-success-content)"
+            : "var(--color-primary-content)"
+          : "var(--color-base-content)";
+        return (
+          <g
+            key={`peg-${peg.index}`}
+            role="button"
+            tabIndex={0}
+            aria-pressed={active}
+            aria-label={peg.ariaLabel}
+            className="cursor-pointer outline-none [&:focus-visible>circle]:stroke-[var(--color-primary)]"
+            onClick={() => onSelect?.(peg.index)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onSelect?.(peg.index);
+              }
+            }}
+          >
             <circle
-              cx={p.x}
-              cy={p.y}
-              r={3.8}
-              fill={metal[2]}
-              stroke={active ? accent : "rgb(0 0 0 / 0.4)"}
-              strokeWidth={active ? 2.4 : 1}
+              cx={peg.x}
+              cy={peg.y}
+              r={peg.r}
+              fill={fill}
+              stroke="transparent"
+              strokeWidth={4}
+              className="transition-[fill] duration-200"
             />
+            <text
+              x={peg.x}
+              y={peg.y}
+              dy="0.35em"
+              textAnchor="middle"
+              fontSize={peg.r * (peg.label.length > 2 ? 0.62 : 0.8)}
+              fontWeight={700}
+              fill={ink}
+              className="pointer-events-none select-none"
+            >
+              {peg.label}
+            </text>
           </g>
         );
       })}

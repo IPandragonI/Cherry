@@ -3,15 +3,15 @@
 import { useState } from "react";
 import { Sheet } from "@/components/ui/Sheet";
 import { PencilIcon, PlusIcon, TrashIcon } from "@/components/ui/icons";
-import { tuningName, useT } from "@/lib/i18n/useT";
-import { displayNote, noteName } from "@/lib/music/notes";
+import { tuningName, useNotation, useT } from "@/lib/i18n/useT";
+import { noteLabel, type Notation } from "@/lib/music/notes";
 import { DEFAULT_TUNING, PRESET_TUNINGS, type Tuning } from "@/lib/music/tunings";
 import { useSettings } from "@/store/settings";
 import { useCustomTunings } from "@/store/tunings";
 import { TuningEditor } from "./TuningEditor";
 
-export const tuningNotes = (tuning: Tuning) =>
-  tuning.strings.map((m) => displayNote(noteName(m))).join(" ");
+export const tuningNotes = (tuning: Tuning, notation: Notation = "letters") =>
+  tuning.strings.map((m) => noteLabel(m, notation)).join(" ");
 
 interface TuningPickerProps {
   open: boolean;
@@ -21,6 +21,7 @@ interface TuningPickerProps {
 
 export function TuningPicker({ open, onClose, current }: TuningPickerProps) {
   const t = useT();
+  const notation = useNotation();
   const setSettings = useSettings((s) => s.set);
   const { custom, save, remove } = useCustomTunings();
   const [editing, setEditing] = useState<Tuning | null>(null);
@@ -50,7 +51,7 @@ export function TuningPicker({ open, onClose, current }: TuningPickerProps) {
         >
           <span className="font-medium">{name}</span>
           <span className={`text-sm tabular-nums ${active ? "" : "text-base-content/75"}`}>
-            {tuningNotes(tuning)}
+            {tuningNotes(tuning, notation)}
           </span>
         </button>
         {tuning.custom && (

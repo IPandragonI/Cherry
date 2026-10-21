@@ -36,8 +36,9 @@ export interface EngineSnapshot {
 const IDLE: EngineSnapshot = { status: "idle", frequency: null, level: 0, info: null };
 
 const WORKLET_URL = "/worklets/pitch-processor.js";
+const WORKER_URL = "/worklets/pitch-worker.js";
 const RESUME_TIMEOUT_MS = 400;
-/** The worklet posts every ~21 ms; this much silence from it means the chain is dead. */
+/** The analysis posts every ~21 ms; this much silence from it means the chain is dead. */
 const STALL_MS = 1500;
 const WATCHDOG_MS = 1000;
 const GESTURES = ["pointerdown", "keydown", "touchend"] as const;
@@ -85,6 +86,7 @@ class TunerEngine {
   private readonly listeners = new Set<() => void>();
   private ctx: AudioContext | null = null;
   private stream: MediaStream | null = null;
+  private worker: Worker | null = null;
   private wakeLock: WakeLockSentinel | null = null;
   private watchdog: ReturnType<typeof setInterval> | null = null;
   private lastMessageAt = 0;
@@ -203,7 +205,14 @@ class TunerEngine {
       const mute = ctx.createGain();
       mute.gain.value = 0;
       source.connect(node).connect(mute).connect(ctx.destination);
-      node.port.onmessage = (e: MessageEvent<PitchReading>) => this.onReading(e.data);
+      // The worklet only forwards samples; the analysis runs in a worker, connected to it
+      // directly so neither the audio thread nor the UI thread does the heavy lifting.
+      const worker = new Worker(WORKER_URL);
+      this.worker = worker;
+      const channel = new MessageChannel();
+      worker.postMessage({ port: channel.port2, sampleRate: ctx.sampleRate }, [channel.port2]);
+      node.port.postMessage({ port: channel.port1 }, [channel.port1]);
+      worker.onmessage = (e: MessageEvent<PitchReading>) => this.onReading(e.data);
 
       const track = stream.getAudioTracks()[0];
       // Mobile OSes end the capture when the app is backgrounded or interrupted (phone
@@ -248,6 +257,8 @@ class TunerEngine {
     GESTURES.forEach((g) => document.removeEventListener(g, this.onGesture, true));
     this.stream?.getTracks().forEach((t) => t.stop());
     this.stream = null;
+    this.worker?.terminate();
+    this.worker = null;
     if (this.ctx) this.ctx.onstatechange = null;
     void this.ctx?.close().catch(() => {});
     this.ctx = null;

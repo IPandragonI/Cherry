@@ -105,3 +105,10 @@ export function parseNote(note: string): number {
 export function formatNote(midi: number): string {
   return `${noteName(midi)}${octaveOf(midi)}`;
 }
+
+export type Notation = "letters" | "solfege";
+
+/** A pitch's name in the chosen convention: "F♯" / "Fa♯". */
+export function noteLabel(midi: number, notation: Notation): string {
+  return notation === "solfege" ? solfegeName(midi) : displayNote(noteName(midi));
+}

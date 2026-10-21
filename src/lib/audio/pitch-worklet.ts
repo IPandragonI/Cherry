@@ -1,36 +1,49 @@
 /**
- * AudioWorklet processor: runs the pitch analysis off the main thread and posts one
- * {@link PitchReading} per analysis hop. Bundled to public/worklets/pitch-processor.js by
- * scripts/build-worklet.mjs.
+ * AudioWorklet processor: the only code on the real-time audio thread, so it does as
+ * little as possible. It mixes the input channels down and forwards the samples, in
+ * chunks, straight to the analysis worker (pitch-worker.ts) over a MessagePort handed to
+ * it by the engine. The spectral analysis takes milliseconds per hop, more than a
+ * 128-sample render quantum (2.7 ms) allows on a phone. Bundled to
+ * public/worklets/pitch-processor.js by next.config.ts.
  */
-import { PitchAnalyzer } from "../pitch/analyzer";
 
 // AudioWorkletGlobalScope members (not part of the DOM lib typings).
-declare const sampleRate: number;
 declare function registerProcessor(name: string, processor: unknown): void;
 declare class AudioWorkletProcessor {
   readonly port: MessagePort;
 }
 
+/** Samples per message to the worker (~10 ms at 48 kHz). */
+const CHUNK = 512;
+
 class PitchProcessor extends AudioWorkletProcessor {
-  private readonly analyzer = new PitchAnalyzer(sampleRate);
-  private mix = new Float32Array(128);
+  private worker: MessagePort | null = null;
+  private chunk = new Float32Array(CHUNK);
+  private filled = 0;
+
+  constructor() {
+    super();
+    this.port.onmessage = (e: MessageEvent<{ port?: MessagePort }>) => {
+      if (e.data.port) this.worker = e.data.port;
+    };
+  }
 
   process(inputs: Float32Array[][]): boolean {
     const channels = inputs[0];
-    if (!channels?.length) return true;
-    // Desktop sound cards and audio interfaces often deliver stereo, with the guitar on
-    // only one side (e.g. input 2 = right). Summing every channel catches it wherever it is.
-    let samples = channels[0];
-    if (channels.length > 1) {
-      if (this.mix.length !== samples.length) this.mix = new Float32Array(samples.length);
-      this.mix.fill(0);
-      for (const channel of channels) {
-        for (let i = 0; i < channel.length; i++) this.mix[i] += channel[i];
+    if (!channels?.length || !this.worker) return true;
+    const length = channels[0].length;
+    for (let i = 0; i < length; i++) {
+      // Desktop sound cards and audio interfaces often deliver stereo, with the guitar on
+      // only one side (e.g. input 2 = right). Summing every channel catches it wherever it is.
+      let sample = 0;
+      for (const channel of channels) sample += channel[i];
+      this.chunk[this.filled++] = sample;
+      if (this.filled === CHUNK) {
+        this.worker.postMessage(this.chunk, [this.chunk.buffer]);
+        this.chunk = new Float32Array(CHUNK);
+        this.filled = 0;
       }
-      samples = this.mix;
     }
-    for (const reading of this.analyzer.push(samples)) this.port.postMessage(reading);
     return true;
   }
 }

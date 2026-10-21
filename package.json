@@ -19,6 +19,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "fft.js": "^4.0.4",
     "next": "16.4.2",
     "pitchy": "^4.1.0",
     "react": "19.3.0",

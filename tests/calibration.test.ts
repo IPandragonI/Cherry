@@ -49,12 +49,12 @@ function readings(signal: Float32Array, sampleRate: number, target: number) {
 const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
 
 describe.each([48000, 44100, 16000])("at %i Hz", (sampleRate) => {
-  it.each(STANDARD)("an in-tune string (MIDI %i) reads 0 ±1.5 cents, every frame", (midi) => {
+  it.each(STANDARD)("an in-tune string (MIDI %i) reads 0 ±0.5 cents, every frame ±1", (midi) => {
     const f0 = midiToFrequency(midi);
     const cents = readings(pluck(f0, sampleRate), sampleRate, f0);
     expect(cents.length).toBeGreaterThan(20);
-    expect(Math.abs(mean(cents))).toBeLessThan(1.5);
-    expect(Math.max(...cents.map(Math.abs))).toBeLessThan(2);
+    expect(Math.abs(mean(cents))).toBeLessThan(0.5);
+    expect(Math.max(...cents.map(Math.abs))).toBeLessThan(1);
   });
 });
 
@@ -63,7 +63,7 @@ describe("phone microphone (weak fundamental)", () => {
     const f0 = midiToFrequency(midi);
     const cents = readings(pluck(f0, 48000, { lowCut: 150 }), 48000, f0);
     expect(cents.length).toBeGreaterThan(20);
-    expect(Math.abs(mean(cents))).toBeLessThan(1.5);
+    expect(Math.abs(mean(cents))).toBeLessThan(0.5);
   });
 });
 

@@ -41,3 +41,38 @@ test("manifest and service worker are served", async ({ request }) => {
   expect(sw.ok()).toBe(true);
   expect(await sw.text()).toContain("/worklets/pitch-processor.js");
 });
+
+test("metronome plays and the visual beat advances", async ({ page }) => {
+  await withSettings(page, { locale: "fr", bpm: 200, beatsPerBar: 4 });
+  await page.goto("/metronome");
+  await page.getByRole("button", { name: "Démarrer" }).click();
+  const beats = page.getByRole("img", { name: /Temps \d sur 4/ });
+  await expect(beats).toHaveAttribute("aria-label", /Temps [1-4] sur 4/);
+  const first = await beats.getAttribute("aria-label");
+  await expect(beats).not.toHaveAttribute("aria-label", first!);
+  await page.getByRole("button", { name: "Arrêter" }).click();
+});
+
+test("left-handed mode mirrors the headstock, labels stay readable", async ({ page }) => {
+  await withSettings(page, { locale: "fr", demo: true, leftHanded: true, headstock: "inline" });
+  await page.goto("/");
+  const lowE = page.getByRole("button", { name: /^Corde 6, Mi/ });
+  const highE = page.getByRole("button", { name: /^Corde 1, Mi/ });
+  await expect(lowE).toBeVisible();
+  // Six-in-line keys sit on the bass side: mirrored, they move to the right of the neck.
+  const neck = await page.locator("svg.neck[role=group]").boundingBox();
+  const peg = await lowE.boundingBox();
+  expect(peg!.x).toBeGreaterThan(neck!.x + neck!.width / 2);
+  await expect(highE).toHaveText("mi");
+});
+
+test("credits are reachable from the settings", async ({ page }) => {
+  await withSettings(page, { locale: "fr" });
+  await page.goto("/settings");
+  await page.getByRole("link", { name: "Crédits" }).click();
+  await expect(page).toHaveURL("/settings/credits");
+  await expect(page.getByRole("link", { name: /Code source/ })).toHaveAttribute(
+    "href",
+    "https://github.com/IPandragonI/Cherry",
+  );
+});

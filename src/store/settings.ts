@@ -7,6 +7,11 @@ export type ThemePref = "system" | "light" | "dark";
 export type LocalePref = "auto" | "fr" | "en";
 export type NeckSkin = "maple" | "rosewood" | "ebony";
 export type TunerMode = "auto" | "manual";
+/** Note names: letters (C D E), solfège (Do Ré Mi), or follow the interface language. */
+export type NotationPref = "auto" | "letters" | "solfege";
+
+export const MIN_BPM = 30;
+export const MAX_BPM = 250;
 
 export const NECK_SKINS: NeckSkin[] = ["maple", "rosewood", "ebony"];
 
@@ -26,11 +31,18 @@ export interface Settings {
   refTone: boolean;
   haptics: boolean;
   demo: boolean;
+  notation: NotationPref;
+  /** Mirrors the headstock and the string indicators for left-handed players. */
+  leftHanded: boolean;
+  bpm: number;
+  /** Beats per bar (the first one is accented). */
+  beatsPerBar: number;
 }
 
 interface SettingsActions {
   set: (patch: Partial<Settings>) => void;
   setA4: (a4: number) => void;
+  setBpm: (bpm: number) => void;
   /** Tapping a string pill switches to manual mode on that string. */
   selectString: (index: number) => void;
 }
@@ -47,6 +59,10 @@ export const DEFAULT_SETTINGS: Settings = {
   refTone: true,
   haptics: true,
   demo: false,
+  notation: "auto",
+  leftHanded: false,
+  bpm: 90,
+  beatsPerBar: 4,
 };
 
 export const useSettings = create<Settings & SettingsActions>()(
@@ -55,6 +71,7 @@ export const useSettings = create<Settings & SettingsActions>()(
       ...DEFAULT_SETTINGS,
       set: (patch) => set(patch),
       setA4: (a4) => set({ a4: Math.round(Math.min(MAX_A4, Math.max(MIN_A4, a4))) }),
+      setBpm: (bpm) => set({ bpm: Math.round(Math.min(MAX_BPM, Math.max(MIN_BPM, bpm))) }),
       selectString: (index) => set({ selectedString: index, mode: "manual" }),
     }),
     {
@@ -74,6 +91,10 @@ export const useSettings = create<Settings & SettingsActions>()(
         refTone: s.refTone,
         haptics: s.haptics,
         demo: s.demo,
+        notation: s.notation,
+        leftHanded: s.leftHanded,
+        bpm: s.bpm,
+        beatsPerBar: s.beatsPerBar,
       }),
     },
   ),

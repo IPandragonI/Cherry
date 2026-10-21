@@ -2,6 +2,7 @@
 
 import { useCallback, useSyncExternalStore } from "react";
 import { useSettings } from "@/store/settings";
+import type { Notation } from "@/lib/music/notes";
 import { MESSAGES, type Locale, type MessageKey } from "./messages";
 
 export type Translate = (key: MessageKey, vars?: Record<string, string | number>) => string;
@@ -45,4 +46,12 @@ export function useNumberFormat(fractionDigits = 1) {
       }),
     [locale, fractionDigits],
   );
+}
+
+/** Note naming convention in effect: the user's choice, else the interface language's. */
+export function useNotation(): Notation {
+  const pref = useSettings((s) => s.notation);
+  const locale = useLocale();
+  if (pref !== "auto") return pref;
+  return locale === "fr" ? "solfege" : "letters";
 }

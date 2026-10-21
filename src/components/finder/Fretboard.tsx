@@ -1,7 +1,7 @@
 "use client";
 
-import { useT } from "@/lib/i18n/useT";
-import { displayNote, noteName } from "@/lib/music/notes";
+import { useNotation, useT } from "@/lib/i18n/useT";
+import { noteLabel } from "@/lib/music/notes";
 import type { Fret } from "@/lib/music/recognize";
 
 export const FRET_COUNT = 12;
@@ -23,6 +23,7 @@ interface FretboardProps {
  */
 export function Fretboard({ strings, frets, onChange }: FretboardProps) {
   const t = useT();
+  const notation = useNotation();
   const count = strings.length;
   const width = NUT_W + CELL_W * FRET_COUNT;
   const height = ROW_H * count;
@@ -139,7 +140,7 @@ export function Fretboard({ strings, frets, onChange }: FretboardProps) {
                 fontWeight={700}
                 className={f === 0 ? "fill-primary" : "fill-primary-content"}
               >
-                {displayNote(noteName(strings[s] + f))}
+                {noteLabel(strings[s] + f, notation)}
               </text>
             );
           })}

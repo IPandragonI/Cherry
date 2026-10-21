@@ -1,6 +1,6 @@
 "use client";
 
-import { useLocale, useNumberFormat, useT } from "@/lib/i18n/useT";
+import { useNotation, useNumberFormat, useT } from "@/lib/i18n/useT";
 import type { TunerState } from "@/lib/audio/useTuner";
 import { displayNote } from "@/lib/music/notes";
 
@@ -18,25 +18,28 @@ export function Readout({
   status,
 }: ReadoutProps) {
   const t = useT();
-  const locale = useLocale();
+  const notation = useNotation();
   const hz = useNumberFormat(1);
   const inTune = status === "inTune";
   const shownFrequency = frequency ?? targetFrequency;
-  const noteLabel = locale === "fr" ? solfege : note && `${displayNote(note)}${octave}`;
+  const letter = note && displayNote(note);
+  // Big name in the chosen notation; the other convention (with octave) as a reminder.
+  const main = notation === "solfege" ? solfege : letter;
+  const other = notation === "solfege" ? letter && `${letter}${octave}` : solfege;
 
   return (
     <div className="flex items-center gap-4 pl-6" aria-live="polite" aria-atomic="true">
       <p
-        className={`flex min-w-[76px] items-baseline font-display text-[64px] leading-none font-semibold transition-colors duration-300 ${
-          inTune ? "text-success" : "text-primary"
-        }`}
+        className={`flex min-w-[76px] items-baseline font-display leading-none font-semibold ${
+          main && main.length > 2 ? "text-[52px]" : "text-[64px]"
+        } transition-colors duration-300 ${inTune ? "text-success" : "text-primary"}`}
       >
-        {note ? displayNote(note) : "–"}
+        {main ?? "–"}
         {octave !== null && <sub className="ml-0.5 text-xl font-medium">{octave}</sub>}
       </p>
       <div className="min-w-0 flex-1">
         <p className="text-sm text-base-content/85 tabular-nums">
-          {noteLabel ?? "–"} · {shownFrequency ? `${hz(shownFrequency)} Hz` : "– Hz"}
+          {other ?? "–"} · {shownFrequency ? `${hz(shownFrequency)} Hz` : "– Hz"}
         </p>
         {/* Fixed two-line height: switching messages never moves the pills below. */}
         <div className="mt-1 h-[2.6rem]">

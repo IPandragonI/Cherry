@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      fft.js:
+        specifier: ^4.0.4
+        version: 4.0.4
       next:
         specifier: 16.4.2
         version: 16.4.2(@babel/core@7.29.7)(@playwright/test@1.64.1)(@types/node@20.19.43)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)

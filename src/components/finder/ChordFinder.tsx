@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { HeartIcon, PlayIcon, ResetIcon } from "@/components/ui/icons";
 import { playNotes } from "@/lib/audio/tonePlayer";
-import { tuningName, useT } from "@/lib/i18n/useT";
+import { tuningName, useNotation, useT } from "@/lib/i18n/useT";
 import { prettyChordName, voicingFrequencies } from "@/lib/music/chords";
-import { displayNote, noteName } from "@/lib/music/notes";
+import { noteLabel } from "@/lib/music/notes";
 import { notesFromFrets, recognizeChord, type Fret } from "@/lib/music/recognize";
 import { findTuning, type Tuning } from "@/lib/music/tunings";
 import { useFavorites } from "@/store/favorites";
@@ -25,6 +25,7 @@ export function ChordFinder() {
 
 function Finder({ tuning }: { tuning: Tuning }) {
   const t = useT();
+  const notation = useNotation();
   const a4 = useSettings((s) => s.a4);
   const saveShape = useFavorites((s) => s.saveShape);
   const [frets, setFrets] = useState<Fret[]>(() => tuning.strings.map(() => null));
@@ -48,7 +49,7 @@ function Finder({ tuning }: { tuning: Tuning }) {
         <h1 className="font-display text-3xl font-semibold">{t("finder.title")}</h1>
         <p className="mt-1 text-sm text-base-content/75">
           {t("finder.tuning", { name: tuningName(t, tuning) })} ·{" "}
-          {tuning.strings.map((m) => displayNote(noteName(m))).join(" ")}
+          {tuning.strings.map((m) => noteLabel(m, notation)).join(" ")}
         </p>
       </header>
 
@@ -74,7 +75,7 @@ function Finder({ tuning }: { tuning: Tuning }) {
           </p>
         )}
         <p className="mt-2 font-mono text-xs text-base-content/75">
-          {notes.length > 0 ? notes.map((n) => displayNote(noteName(n))).join(" ") : " "}
+          {notes.length > 0 ? notes.map((n) => noteLabel(n, notation)).join(" ") : " "}
         </p>
       </section>
 

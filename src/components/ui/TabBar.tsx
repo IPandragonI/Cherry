@@ -5,12 +5,13 @@ import { usePathname } from "next/navigation";
 import type { ComponentType, SVGProps } from "react";
 import type { MessageKey } from "@/lib/i18n/messages";
 import { useT } from "@/lib/i18n/useT";
-import { ChordsIcon, FinderIcon, SettingsIcon, TunerIcon } from "./icons";
+import { ChordsIcon, FinderIcon, MetronomeIcon, SettingsIcon, TunerIcon } from "./icons";
 
 const TABS: { href: string; label: MessageKey; Icon: ComponentType<SVGProps<SVGSVGElement>> }[] = [
   { href: "/", label: "tab.tuner", Icon: TunerIcon },
   { href: "/chords", label: "tab.chords", Icon: ChordsIcon },
   { href: "/finder", label: "tab.finder", Icon: FinderIcon },
+  { href: "/metronome", label: "tab.metronome", Icon: MetronomeIcon },
   { href: "/settings", label: "tab.settings", Icon: SettingsIcon },
 ];
 
@@ -24,7 +25,7 @@ export function TabBar() {
       className="fixed inset-x-0 bottom-0 z-30 border-t border-base-300 bg-base-100/95 backdrop-blur"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
-      <ul className="mx-auto grid h-[84px] max-w-md grid-cols-4 px-2 pb-4">
+      <ul className="mx-auto grid h-[84px] max-w-md grid-cols-5 px-2 pb-4">
         {TABS.map(({ href, label, Icon }) => {
           const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
           return (
@@ -37,7 +38,7 @@ export function TabBar() {
                 }`}
               >
                 <span
-                  className={`flex h-8 w-14 items-center justify-center rounded-full transition-colors ${
+                  className={`flex h-8 w-12 items-center justify-center rounded-full transition-colors ${
                     active ? "bg-primary/12" : ""
                   }`}
                 >

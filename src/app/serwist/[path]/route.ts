@@ -8,7 +8,7 @@ const revision =
   crypto.randomUUID();
 
 /** Every route of the app is precached so the whole app works offline after first visit. */
-const APP_ROUTES = ["/", "/chords", "/finder", "/settings"];
+const APP_ROUTES = ["/", "/chords", "/finder", "/metronome", "/settings", "/settings/credits"];
 
 export const { dynamic, dynamicParams, revalidate, generateStaticParams, GET } = createSerwistRoute(
   {

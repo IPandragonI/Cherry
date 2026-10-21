@@ -1,7 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { TrashIcon } from "@/components/ui/icons";
+import Link from "next/link";
+import { ChevronRightIcon, TrashIcon } from "@/components/ui/icons";
 import { AudioDiagnostic } from "./AudioDiagnostic";
 import { useT } from "@/lib/i18n/useT";
 import { DEFAULT_A4, MAX_A4, MIN_A4 } from "@/lib/music/notes";
@@ -10,6 +11,7 @@ import {
   SETTINGS_STORAGE_KEY,
   useSettings,
   type LocalePref,
+  type NotationPref,
   type ThemePref,
 } from "@/store/settings";
 import { useFavorites } from "@/store/favorites";
@@ -19,6 +21,7 @@ const THEMES: ThemePref[] = ["system", "light", "dark"];
 const A4_PRESETS = [432, 440, 442, 444];
 const STORAGE_KEYS = [SETTINGS_STORAGE_KEY, "cherry-tunings", "cherry-favorites"];
 const TOGGLES = [
+  ["leftHanded", "settings.leftHanded"],
   ["refTone", "settings.refTone"],
   ["haptics", "settings.haptics"],
   ["demo", "settings.demo"],
@@ -153,6 +156,19 @@ export function SettingsScreen() {
             <option value="en">English</option>
           </select>
         </Row>
+
+        <Row label={t("settings.notation")} htmlFor="notation">
+          <select
+            id="notation"
+            className="select w-40"
+            value={s.notation}
+            onChange={(e) => s.set({ notation: e.target.value as NotationPref })}
+          >
+            <option value="auto">{t("settings.notation.auto")}</option>
+            <option value="letters">{t("settings.notation.letters")}</option>
+            <option value="solfege">{t("settings.notation.solfege")}</option>
+          </select>
+        </Row>
       </section>
 
       <section className="divide-y divide-base-300 rounded-box bg-base-200 px-4">
@@ -170,6 +186,14 @@ export function SettingsScreen() {
       </section>
 
       <AudioDiagnostic />
+
+      <Link
+        href="/settings/credits"
+        className="flex min-h-14 items-center justify-between rounded-box bg-base-200 px-4 font-medium transition-colors hover:bg-base-300"
+      >
+        {t("credits.title")}
+        <ChevronRightIcon width={20} height={20} aria-hidden="true" />
+      </Link>
 
       <button
         type="button"

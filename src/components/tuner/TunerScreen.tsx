@@ -7,22 +7,23 @@ import { sweepCents, useDemo } from "@/lib/audio/demo";
 import { tunerEngine } from "@/lib/audio/engine";
 import { PLUCK_DURATION_MS, playNotes } from "@/lib/audio/tonePlayer";
 import { useTuner } from "@/lib/audio/useTuner";
-import { tuningName, useT } from "@/lib/i18n/useT";
+import { tuningName, useNotation, useT } from "@/lib/i18n/useT";
 import type { MessageKey } from "@/lib/i18n/messages";
-import { DEFAULT_A4, midiToFrequency } from "@/lib/music/notes";
+import { DEFAULT_A4, midiToFrequency, noteLabel } from "@/lib/music/notes";
+import { stringLabelsIn } from "@/lib/music/tunings";
 import { useSettings } from "@/store/settings";
 import { useSettingsHydrated } from "@/store/useSettingsHydrated";
 import { Gauge } from "./Gauge";
 import { Neck } from "./Neck";
 import { Readout } from "./Readout";
 import { SkinPicker } from "./SkinPicker";
-import { StringPills } from "./StringPills";
 import { TuningPicker, tuningNotes } from "./TuningPicker";
 
 export function TunerScreen() {
   const t = useT();
   const tuner = useTuner();
-  const { skin, headstock, a4, refTone, haptics } = useSettings();
+  const { skin, headstock, a4, refTone, haptics, leftHanded } = useSettings();
+  const notation = useNotation();
   const setSettings = useSettings((s) => s.set);
   const selectString = useSettings((s) => s.selectString);
   const [sheet, setSheet] = useState<"tuning" | "skin" | null>(null);
@@ -108,13 +109,25 @@ export function TunerScreen() {
       </section>
 
       <div className="flex min-h-0 flex-1 items-center justify-center px-4">
-        <div className="h-[clamp(220px,44dvh,380px)] w-full">
+        <div className="h-[clamp(240px,50dvh,440px)] w-full">
           <Neck
             skin={skin}
             model={headstock}
             strings={tuner.tuning.strings.length}
             target={tuner.targetString}
             inTune={inTune}
+            mirrored={leftHanded}
+            pegLabels={{
+              labels: stringLabelsIn(tuner.tuning.strings, notation),
+              ariaLabels: tuner.tuning.strings.map((midi, i) =>
+                t(i === tuner.targetString ? "tuner.stringSelected" : "tuner.string", {
+                  n: tuner.tuning.strings.length - i,
+                  note: noteLabel(midi, notation),
+                }),
+              ),
+              selected: tuner.targetString,
+              onSelect: onSelectString,
+            }}
           />
         </div>
       </div>
@@ -127,12 +140,6 @@ export function TunerScreen() {
           {!tuner.demo && <MicToggle />}
         </div>
         <MicControl />
-        <StringPills
-          strings={tuner.tuning.strings}
-          selected={tuner.targetString}
-          inTune={inTune}
-          onSelect={onSelectString}
-        />
       </div>
 
       <TuningPicker

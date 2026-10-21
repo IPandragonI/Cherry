@@ -7,13 +7,17 @@ browser: no backend, no account; preferences live in `localStorage`. UI in Frenc
   Pitch Method) with median + adaptive EMA smoothing, auto/manual string mode, 11 preset
   tunings + custom tunings, adjustable A4 (415–466 Hz), four unbranded headstock models (jazz,
   open book, 6-in-line, acoustic) zoomed on the nut, three fingerboard skins, a mic on/off
-  toggle with input level ring, in-tune haptics, Karplus-Strong reference tones, screen wake lock.
+  toggle with input level ring, string indicators beside the tuning pegs, a trail drawn in
+  the scrolling dot field, in-tune haptics, Karplus-Strong reference tones, screen wake lock.
 - **Chords** (`/chords`) — 204 chords (12 roots × 17 qualities, 724 voicings), SVG diagrams,
   voicing carousel, strum playback, favorites.
 - **Finder** (`/finder`) — tap a 12-fret board, get the chord name with alternatives and
   slash chords, following the current tuning.
-- **Settings** (`/settings`) — theme (system/light/dark), reference pitch, language, demo
-  mode, clear local data.
+- **Metronome** (`/metronome`) — 30–250 BPM, tap tempo, 2–6 beats per bar with accented
+  downbeat, clicks scheduled on the audio clock, visual beat.
+- **Settings** (`/settings`) — theme, reference pitch, interface language, note notation
+  (letters / solfège), left-handed mode, demo mode, audio diagnostic, credits
+  (`/settings/credits`), clear local data.
 
 ## Stack
 

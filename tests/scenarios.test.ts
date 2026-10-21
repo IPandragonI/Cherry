@@ -57,7 +57,9 @@ describe("desktop: quiet microphone (auto gain off)", () => {
       (i) => 0.012 * a2[i % a2.length] + 0.0008 * rand() + hum(i, 0.002),
       midiToFrequency(45),
     );
-    expect(r.coverage).toBeGreaterThan(0.25);
+    // Readings start ~0.25 s after each pluck (clean spectrum), and a −40 dBFS note fades
+    // into the room noise quickly: about a fifth of the 4 s carries a reading.
+    expect(r.coverage).toBeGreaterThan(0.2);
     expect(r.worst).toBeLessThan(2);
   });
 
