@@ -10,17 +10,16 @@ import {
   solfegeName,
   type NoteName,
 } from "@/lib/music/notes";
-import { calibrate } from "@/lib/music/calibration";
 import { closestString, findTuning, type Tuning } from "@/lib/music/tunings";
 import { useSettings, type TunerMode } from "@/store/settings";
 import { useCustomTunings } from "@/store/tunings";
 import { useDemo } from "./demo";
 import { tunerEngine, type MicStatus } from "./engine";
 
-/** Usual tolerance of guitar tuners: closer than this is not heard on a guitar. */
-export const IN_TUNE_CENTS = 5;
-/** Once in tune, the string stays "in tune" until it drifts past this (no flicker at ±5). */
-export const LEAVE_IN_TUNE_CENTS = 7;
+/** Tolerant on purpose: a guitar string within this reads in tune. */
+export const IN_TUNE_CENTS = 8;
+/** Once in tune, the string stays "in tune" until it drifts past this (no flicker at ±8). */
+export const LEAVE_IN_TUNE_CENTS = 10;
 const SLIGHT_CENTS = 15;
 
 export type TuneStatus =
@@ -63,7 +62,7 @@ export function tuneStatus(cents: number | null, wasInTune = false): TuneStatus 
 
 /** Single source of truth for the tuner UI: microphone (or demo) input + settings. */
 export function useTuner(): TunerState {
-  const { tuningId, a4, mode, demo, calibration } = useSettings();
+  const { tuningId, a4, mode, demo } = useSettings();
   const selected = useSettings((s) => s.selectedString);
   const custom = useCustomTunings((s) => s.custom);
   const demoCents = useDemo((s) => s.cents);
@@ -79,9 +78,7 @@ export function useTuner(): TunerState {
 
   const frequency = demo
     ? midiToFrequency(strings[selectedString], a4) * 2 ** (demoCents / 1200)
-    : engine.frequency === null
-      ? null
-      : calibrate(engine.frequency, calibration);
+    : engine.frequency;
 
   let detected: number | null = null;
   let cents: number | null = null;

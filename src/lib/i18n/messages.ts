@@ -184,13 +184,6 @@ const fr = {
   "settings.a4.help":
     "Standard : 440 Hz. Une autre valeur décale toutes les mesures (444 Hz = −16 cents).",
   "tuner.a4Warning": "Diapason réglé sur La4 = {a4} Hz",
-  "calibration.title": "Calibration",
-  "calibration.help":
-    "Jouez un La de référence (accordeur matériel à 440 Hz, diapason) : l'écart mesuré est corrigé sur toutes les lectures.",
-  "calibration.start": "Calibrer sur un La",
-  "calibration.listening": "Écoute du La…",
-  "calibration.done": "Calibré : {cents} cents appliqués à chaque lecture.",
-  "calibration.failed": "Pas de La stable entendu. Jouez la note de référence plus près du micro.",
   "diag.title": "Diagnostic audio",
   "diag.help":
     "Jouez une corde accordée avec un autre accordeur : l'écart à 440 Hz doit être proche de 0.",
@@ -416,13 +409,6 @@ const en: Record<MessageKey, string> = {
   "settings.a4.help":
     "Standard: 440 Hz. Any other value shifts every reading (444 Hz = −16 cents).",
   "tuner.a4Warning": "Reference pitch set to A4 = {a4} Hz",
-  "calibration.title": "Calibration",
-  "calibration.help":
-    "Play a reference A (hardware tuner at 440 Hz, tuning fork): the measured offset is corrected on every reading.",
-  "calibration.start": "Calibrate on an A",
-  "calibration.listening": "Listening to the A…",
-  "calibration.done": "Calibrated: {cents} cents applied to every reading.",
-  "calibration.failed": "No steady A heard. Play the reference closer to the microphone.",
   "diag.title": "Audio diagnostic",
   "diag.help": "Play a string tuned with another tuner: the offset at 440 Hz should be close to 0.",
   "diag.start": "Test",

@@ -101,13 +101,13 @@ test("a non-standard reference pitch is flagged and shifts the reading", async (
   await page.addInitScript(() =>
     localStorage.setItem(
       "cherry-settings",
-      JSON.stringify({ state: { locale: "fr", a4: 444 }, version: 1 }),
+      JSON.stringify({ state: { locale: "fr", a4: 446 }, version: 1 }),
     ),
   );
   await page.goto("/");
-  await expect(page.getByRole("link", { name: "Diapason réglé sur La4 = 444 Hz" })).toBeVisible();
-  // +9 cents at 440 Hz is −6.7 cents against A4 = 444 Hz.
-  await expect(page.getByRole("meter")).toHaveAttribute("aria-valuetext", /−7 cents/, {
+  await expect(page.getByRole("link", { name: "Diapason réglé sur La4 = 446 Hz" })).toBeVisible();
+  // +9 cents at 440 Hz is −14.4 cents against A4 = 446 Hz.
+  await expect(page.getByRole("meter")).toHaveAttribute("aria-valuetext", /−14 cents/, {
     timeout: 10_000,
   });
 });
@@ -128,26 +128,4 @@ test("the diagnostic records the raw input as a WAV file", async ({ page }) => {
   expect(file.suggestedFilename()).toMatch(/^cherry-.*\.wav$/);
   const { size } = statSync(await file.path());
   expect(size).toBeGreaterThan(6 * 44100 * 2); // 6 s of 16-bit audio
-});
-
-test("calibrating on a reference A makes it read in tune", async ({ page }) => {
-  // The fake microphone plays an A2 9.4 cents sharp: as if this device read A440 sharp.
-  await page.addInitScript(() =>
-    localStorage.setItem(
-      "cherry-settings",
-      JSON.stringify({ state: { locale: "fr" }, version: 2 }),
-    ),
-  );
-  await page.goto("/settings");
-  await page.getByRole("button", { name: "Calibrer sur un La" }).click();
-  await expect(page.getByText(/Calibré : −9,\d|Calibré : −9\.\d/)).toBeVisible({ timeout: 20_000 });
-
-  await page.getByRole("link", { name: "Accordeur" }).click();
-  await expect(page.getByRole("meter")).toHaveAttribute(
-    "aria-valuetext",
-    /Corde accordée|[+−]?[01] cents/,
-    {
-      timeout: 15_000,
-    },
-  );
 });

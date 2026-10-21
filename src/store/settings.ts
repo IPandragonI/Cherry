@@ -22,8 +22,6 @@ export interface Settings {
   theme: ThemePref;
   locale: LocalePref;
   a4: number;
-  /** Fine correction (cents) added to every reading, from Settings → Calibration. */
-  calibration: number;
   skin: NeckSkin;
   headstock: HeadstockId;
   tuningId: string;
@@ -56,7 +54,6 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: "system",
   locale: "auto",
   a4: DEFAULT_A4,
-  calibration: 0,
   skin: "maple",
   headstock: "jazz",
   tuningId: "standard",
@@ -84,14 +81,16 @@ export const useSettings = create<Settings & SettingsActions>()(
     }),
     {
       name: SETTINGS_STORAGE_KEY,
-      version: 2,
+      version: 3,
       // v2: letters became the default notation. "auto" was the old default, never an
       // explicit choice, so it moves to letters; an explicit "solfege" is kept.
+      // v3: the calibration setting was removed; a stored correction must not linger.
       migrate: (persisted, version) => {
         const state = persisted as Partial<Settings>;
         if (version < 2 && (state.notation === undefined || state.notation === "auto")) {
           state.notation = "letters";
         }
+        if (version < 3) delete (state as { calibration?: number }).calibration;
         return state as Settings & SettingsActions;
       },
       // Rehydrated after mount by <StoreHydration /> so SSR and first render match.
@@ -100,7 +99,6 @@ export const useSettings = create<Settings & SettingsActions>()(
         theme: s.theme,
         locale: s.locale,
         a4: s.a4,
-        calibration: s.calibration,
         skin: s.skin,
         headstock: s.headstock,
         tuningId: s.tuningId,
