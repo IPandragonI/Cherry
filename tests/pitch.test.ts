@@ -127,20 +127,53 @@ describe("PitchTracker", () => {
     expect(t.update(frame(110, 0.5))).toBeNull();
     expect(t.update(frame(110, 0.97, 0.0001))).toBeNull();
     expect(t.update(frame(20))).toBeNull();
-    expect(t.update(frame(110))).toBe(110);
+    expect(t.update(frame(110))).toBeCloseTo(110, 9);
   });
 
   it("filters single-frame outliers with the median", () => {
     const t = new PitchTracker({ lockFrames: 3, medianSize: 5, jumpCents: 2000 });
     [110, 110, 110, 110].forEach((f) => t.update(frame(f)));
-    expect(t.update(frame(220))).toBe(110);
+    expect(t.update(frame(220))).toBeCloseTo(110, 9);
+  });
+
+  it("damps frame-to-frame jitter (bubble stability)", () => {
+    const rand = noise(3);
+    const target = 110;
+    const t = new PitchTracker();
+    const inCents: number[] = [];
+    const outCents: number[] = [];
+    for (let i = 0; i < 300; i++) {
+      const jitter = 8 * rand(); // ±8 cents of detector noise
+      const out = t.update(frame(target * 2 ** (jitter / 1200)));
+      if (i > 20 && out !== null) {
+        inCents.push(jitter);
+        outCents.push(centsBetween(out, target));
+      }
+    }
+    const spread = (xs: number[]) => Math.sqrt(xs.reduce((s, x) => s + x * x, 0) / xs.length);
+    expect(spread(outCents)).toBeLessThan(spread(inCents) / 3);
+    expect(Math.max(...outCents.map(Math.abs))).toBeLessThan(5);
+  });
+
+  it("still follows a real retune quickly", () => {
+    const t = new PitchTracker();
+    for (let i = 0; i < 30; i++) t.update(frame(110));
+    const retuned = 110 * 2 ** (20 / 1200); // peg turned by +20 cents
+    let frames = 0;
+    let out = 110;
+    while (Math.abs(centsBetween(out, retuned)) > 1 && frames < 100) {
+      out = t.update(frame(retuned))!;
+      frames++;
+    }
+    // ~21 ms per frame: settles in well under half a second.
+    expect(frames).toBeLessThanOrEqual(20);
   });
 
   it("holds the last value through short dropouts, then releases", () => {
     const t = new PitchTracker({ lockFrames: 1, holdFrames: 2 });
     t.update(frame(110));
-    expect(t.update(null)).toBe(110);
-    expect(t.update(null)).toBe(110);
+    expect(t.update(null)).toBeCloseTo(110, 9);
+    expect(t.update(null)).toBeCloseTo(110, 9);
     expect(t.update(null)).toBeNull();
   });
 });

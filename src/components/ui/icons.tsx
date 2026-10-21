@@ -135,3 +135,19 @@ export const ResetIcon = (p: IconProps) => (
     <path d="M4.5 4.5V9H9" />
   </Icon>
 );
+
+/** Music flat sign (♭) drawn as a path, so it renders identically in every font. */
+export const FlatIcon = (p: IconProps) => (
+  <Icon {...p} strokeWidth={2}>
+    <path d="M8.5 3v17.5" />
+    <path d="M8.5 20.5c3.2-1.6 7-4 7-7.2 0-2.3-2.4-3.2-4.4-2.1-1 .5-1.9 1.4-2.6 2.3" />
+  </Icon>
+);
+
+/** Music sharp sign (♯). */
+export const SharpIcon = (p: IconProps) => (
+  <Icon {...p} strokeWidth={2}>
+    <path d="M9.5 3.5v17M14.5 2.5v17" />
+    <path d="M6 10.2 18 7.8M6 16.2l12-2.4" strokeWidth={2.6} />
+  </Icon>
+);

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import library from "@/lib/music/chords.json";
 import { qualityById } from "@/lib/music/chordFormulas";
+import { alternativeNames, chordNotes, formulaLabels } from "@/lib/music/chords";
 import { fingerVoicing, generateChordLibrary, type ChordEntry } from "@/lib/music/chordShapes";
 import { notesFromFrets, recognizeChord, type Fret } from "@/lib/music/recognize";
 import { findTuning } from "@/lib/music/tunings";
@@ -104,5 +105,19 @@ describe("chord library dataset", () => {
     const f = fingerVoicing(shape("133211"))!;
     expect(f.barre).toEqual({ fret: 1, from: 0, to: 5 });
     expect(f.fingers).toEqual([1, 3, 4, 2, 1, 1]);
+  });
+});
+
+describe("chord details", () => {
+  it("spells formulas and notes", () => {
+    expect(formulaLabels("m7")).toEqual(["1", "♭3", "5", "♭7"]);
+    expect(formulaLabels("9")).toEqual(["1", "9", "3", "5", "♭7"]);
+    expect(formulaLabels("dim7")).toEqual(["1", "♭3", "♭5", "♭♭7"]);
+    expect(chordNotes({ root: "A", quality: "m7" })).toEqual(["A", "C", "E", "G"]);
+    expect(chordNotes({ root: "F#", quality: "major" })).toEqual(["F♯", "B♭", "C♯"]);
+  });
+
+  it("lists alternative names for a voicing", () => {
+    expect(alternativeNames(shape("x02013"), STANDARD, "Am7")).toContain("C6/A");
   });
 });

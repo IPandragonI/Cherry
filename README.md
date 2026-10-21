@@ -3,9 +3,10 @@
 Mobile-first guitar tuner PWA with a chord library and a chord finder. Everything runs in the
 browser: no backend, no account; preferences live in `localStorage`. UI in French and English.
 
-- **Tuner** (`/`) — live pitch detection (AudioWorklet + McLeod Pitch Method), auto/manual
-  string mode, 11 preset tunings + custom tunings, adjustable A4 (415–466 Hz), three neck skins,
-  in-tune haptics, Karplus-Strong reference tones, screen wake lock.
+- **Tuner** (`/`) — starts listening on its own; live pitch detection (AudioWorklet + McLeod
+  Pitch Method) with median + adaptive EMA smoothing, auto/manual string mode, 11 preset
+  tunings + custom tunings, adjustable A4 (415–466 Hz), jazz-box headstock with three
+  fingerboard skins, in-tune haptics, Karplus-Strong reference tones, screen wake lock.
 - **Chords** (`/chords`) — 204 chords (12 roots × 17 qualities, 724 voicings), SVG diagrams,
   voicing carousel, strum playback, favorites.
 - **Finder** (`/finder`) — tap a 12-fret board, get the chord name with alternatives and
@@ -36,10 +37,12 @@ pnpm dev          # http://localhost:3000 (builds the audio worklet first)
 | `pnpm test`          | Vitest: note/cents math, pitch detection on synthetic signals, chords |
 | `pnpm test:e2e`      | Playwright smoke tests (needs `pnpm build`; starts `pnpm start`)      |
 | `pnpm chords`        | Regenerate `src/lib/music/chords.json` from the shape templates       |
-| `pnpm icons`         | Regenerate the PWA icons in `public/icons/`                           |
+| `pnpm icons`         | Regenerate icons + splash logo from `new.png` (the source logo)       |
 | `pnpm format`        | Prettier                                                              |
 
-First Playwright run: `pnpm exec playwright install chromium`.
+First Playwright run: `pnpm exec playwright install chromium`. The `desktop-mic` project
+feeds desktop Chromium a generated stereo WAV (guitar on the right channel only) as a fake
+microphone, as a regression test for desktop audio interfaces.
 
 ### Developing without a microphone
 
@@ -66,9 +69,12 @@ e2e/                   Playwright smoke tests
 scripts/               worklet bundler, chord generator, icon generator
 ```
 
-The detection pipeline is pure TypeScript shared by the worklet and the tests: band-pass
-(60 Hz–1 kHz) → MPM on 4096-sample windows every 1024 samples → clarity/level gate →
-5-frame median → lock after 3 agreeing frames (±20 cents) → hold through short dropouts.
+The detection pipeline is pure TypeScript shared by the worklet and the tests: all input
+channels summed (stereo interfaces) → band-pass (60 Hz–1 kHz) → MPM on 4096-sample windows
+every 1024 samples → clarity/level gate → 7-frame median → lock after 3 agreeing frames
+(±20 cents) → adaptive EMA in cents (heavy while steady, quicker while retuning) → hold
+through short dropouts. The UI adds in-tune hysteresis (enter ≤ 3 cents, leave > 5 cents) and
+eases the bubble on screen.
 
 ## Deploy to Vercel
 
@@ -94,8 +100,10 @@ CLI alternative: `pnpm dlx vercel` (preview) / `pnpm dlx vercel --prod`.
 
 ### iOS Safari caveats
 
-- Audio only starts from a user gesture. That's why the tuner has an explicit **Start
-  tuning** button. The AudioContext is created synchronously inside that tap.
+- The tuner requests the microphone as soon as it opens, then creates the AudioContext while
+  capture is active, which Safari and Chrome allow without a tap. If a browser still keeps
+  audio paused (Firefox does until the first interaction), the tuner shows **Tap to start
+  listening**, and any tap or key press on the page resumes it.
 - The microphone permission is asked again after each reload in Safari, and in a
   home-screen web app it may be asked on each launch.
 - Safari suspends audio when the app goes to the background. Cherry resumes the context when

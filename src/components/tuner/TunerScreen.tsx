@@ -10,6 +10,7 @@ import { tuningName, useT } from "@/lib/i18n/useT";
 import type { MessageKey } from "@/lib/i18n/messages";
 import { midiToFrequency } from "@/lib/music/notes";
 import { useSettings } from "@/store/settings";
+import { useSettingsHydrated } from "@/store/useSettingsHydrated";
 import { Gauge } from "./Gauge";
 import { Neck } from "./Neck";
 import { Readout } from "./Readout";
@@ -26,8 +27,14 @@ export function TunerScreen() {
   const [sheet, setSheet] = useState<"tuning" | "skin" | null>(null);
   const inTune = tuner.status === "inTune";
 
-  // Release the microphone when leaving the tuner tab.
-  useEffect(() => () => tunerEngine.stop(), []);
+  // Listen as soon as the tuner is shown (once saved settings are known, so demo mode never
+  // triggers a microphone prompt); release the microphone when leaving the tab.
+  const hydrated = useSettingsHydrated();
+  useEffect(() => {
+    if (!hydrated || tuner.demo) return;
+    void tunerEngine.start();
+    return () => tunerEngine.stop();
+  }, [hydrated, tuner.demo]);
 
   // One short buzz each time a string reaches the in-tune zone.
   const wasInTune = useRef(false);
@@ -47,7 +54,7 @@ export function TunerScreen() {
   const name = tuningName(t, tuner.tuning);
 
   return (
-    <div className="flex flex-1 flex-col">
+    <div className="flex flex-1 flex-col" data-mic-status={tuner.mic} data-mic-level={tuner.level}>
       <header className="flex items-center gap-2 px-4 pt-3">
         <button
           type="button"
@@ -85,7 +92,7 @@ export function TunerScreen() {
         </div>
       </header>
 
-      <section className="flex h-[150px] shrink-0 flex-col justify-end px-6 pb-2">
+      <section className="flex h-[170px] shrink-0 flex-col justify-end px-6 pb-1">
         <Gauge cents={tuner.cents} inTune={inTune} />
       </section>
 
@@ -129,31 +136,55 @@ const MIC_ERRORS: Partial<Record<string, MessageKey>> = {
   error: "mic.error",
 };
 
-/** Start button (required by iOS), error states, or the demo controls. */
+/** Listening states: nothing while it works, otherwise what is needed to recover. */
 function MicControl() {
   const t = useT();
   const { mic, demo } = useTuner();
 
   if (demo) return <DemoPanel />;
-  if (mic === "running") return null;
+  if (mic === "running" || mic === "idle") return null;
+
+  if (mic === "starting") {
+    return (
+      <p className="flex items-center justify-center gap-2 px-6 text-sm text-base-content/75">
+        <span className="loading loading-xs loading-dots" aria-hidden="true" />
+        {t("tuner.starting")}
+      </p>
+    );
+  }
+
+  // Some browsers keep audio paused until the first interaction with the page.
+  if (mic === "suspended") {
+    return (
+      <div className="px-6">
+        <button
+          type="button"
+          className="btn min-h-12 w-full rounded-full btn-soft btn-primary"
+          onClick={() => tunerEngine.resume()}
+        >
+          <MicIcon width={20} height={20} />
+          {t("tuner.tapToListen")}
+        </button>
+      </div>
+    );
+  }
 
   const error = MIC_ERRORS[mic];
+  const canRetry = mic === "denied" || mic === "nomic" || mic === "error";
   return (
-    <div className="space-y-2 px-6">
-      {error && (
-        <p role="alert" className="text-sm text-error">
-          {t(error)}
-        </p>
+    <div className="flex items-center gap-3 px-6">
+      <p role="alert" className="flex-1 text-sm text-error">
+        {error && t(error)}
+      </p>
+      {canRetry && (
+        <button
+          type="button"
+          className="btn min-h-11 shrink-0 rounded-full btn-outline btn-primary"
+          onClick={() => void tunerEngine.start()}
+        >
+          {t("mic.retry")}
+        </button>
       )}
-      <button
-        type="button"
-        className="btn min-h-12 w-full rounded-full text-base btn-primary"
-        disabled={mic === "starting" || mic === "insecure" || mic === "unsupported"}
-        onClick={() => void tunerEngine.start()}
-      >
-        <MicIcon width={20} height={20} />
-        {t(mic === "starting" ? "tuner.starting" : "tuner.start")}
-      </button>
     </div>
   );
 }

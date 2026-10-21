@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { FlatIcon, SharpIcon } from "@/components/ui/icons";
 import { useT } from "@/lib/i18n/useT";
 import { IN_TUNE_CENTS } from "@/lib/audio/useTuner";
 import { clampCents } from "@/lib/music/notes";
@@ -9,6 +10,8 @@ const WIDTH = 342;
 const PAD = 11;
 const BUBBLE = 52;
 const SPAN = WIDTH - 2 * PAD;
+/** Bubble easing time constant (ms): on top of the tracker's own smoothing. */
+const EASE_MS = 140;
 
 const xFor = (cents: number, width = WIDTH) => {
   const pad = (PAD / WIDTH) * width;
@@ -30,9 +33,9 @@ interface GaugeProps {
 }
 
 /**
- * Ruler-style gauge: a bubble glides along a −50…+50 cent ruler. The position is
- * animated outside React (rAF + exponential smoothing on `transform`) so it stays
- * fluid at 60 fps while readings arrive at ~45 Hz.
+ * Ruler-style gauge: a bubble glides along a −50…+50 cent ruler over a dot-matrix field
+ * that scrolls downwards while a pitch is heard. The bubble position is animated outside
+ * React (rAF + exponential easing on `transform`) so it stays fluid at 60 fps.
  */
 export function Gauge({ cents, inTune }: GaugeProps) {
   const t = useT();
@@ -61,7 +64,7 @@ export function Gauge({ cents, inTune }: GaugeProps) {
       const target = targetRef.current;
       position = reduced.matches
         ? target
-        : position + (target - position) * (1 - Math.exp(-dt / 90));
+        : position + (target - position) * (1 - Math.exp(-dt / EASE_MS));
       bubble.style.transform = `translate3d(${xFor(position, width) - BUBBLE / 2}px,0,0)`;
       frame = requestAnimationFrame(tick);
     });
@@ -85,10 +88,22 @@ export function Gauge({ cents, inTune }: GaugeProps) {
       aria-valuenow={active ? Math.round(clampCents(cents)) : 0}
       aria-valuetext={active ? t("tuner.gauge.label", { cents: value }) : t("tuner.noSignal")}
     >
-      <div ref={trackRef} className="relative h-[66px]">
+      <div ref={trackRef} className="relative h-[96px]">
+        <div className="dot-field" data-active={active} data-in-tune={inTune} aria-hidden="true">
+          <div className="dot-field-dots" />
+        </div>
+        <div
+          className="absolute inset-y-0 left-1/2 w-[2px] -translate-x-1/2 rounded-full transition-colors duration-300"
+          style={{
+            background: `linear-gradient(to bottom, transparent, ${
+              inTune ? "var(--tuner-ok)" : "var(--tuner-ink)"
+            } 70%)`,
+          }}
+          aria-hidden="true"
+        />
         <div
           ref={bubbleRef}
-          className="absolute top-0 left-0 will-change-transform"
+          className="absolute bottom-0 left-0 will-change-transform"
           style={{ width: BUBBLE, transform: `translate3d(${xFor(0) - BUBBLE / 2}px,0,0)` }}
           aria-hidden="true"
         >
@@ -141,10 +156,18 @@ export function Gauge({ cents, inTune }: GaugeProps) {
         })}
       </svg>
 
-      <div className="mt-1 flex justify-between text-xs" aria-hidden="true">
-        <span className="text-base-content/75">−50 {t("tuner.gauge.low")}</span>
-        <span className="font-semibold text-success">{t("tuner.gauge.center")}</span>
-        <span className="text-base-content/75">{t("tuner.gauge.high")} +50</span>
+      <div className="mt-0.5 flex items-center justify-between">
+        <span className="text-base-content/75" title={t("tuner.gauge.low")}>
+          <FlatIcon width={20} height={20} aria-hidden="true" />
+          <span className="sr-only">{t("tuner.gauge.low")}</span>
+        </span>
+        <span className="text-xs font-semibold text-success" aria-hidden="true">
+          {t("tuner.gauge.center")}
+        </span>
+        <span className="text-base-content/75" title={t("tuner.gauge.high")}>
+          <SharpIcon width={20} height={20} aria-hidden="true" />
+          <span className="sr-only">{t("tuner.gauge.high")}</span>
+        </span>
       </div>
     </div>
   );

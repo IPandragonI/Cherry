@@ -14,12 +14,23 @@ declare class AudioWorkletProcessor {
 
 class PitchProcessor extends AudioWorkletProcessor {
   private readonly analyzer = new PitchAnalyzer(sampleRate);
+  private mix = new Float32Array(128);
 
   process(inputs: Float32Array[][]): boolean {
-    const channel = inputs[0]?.[0];
-    if (channel) {
-      for (const reading of this.analyzer.push(channel)) this.port.postMessage(reading);
+    const channels = inputs[0];
+    if (!channels?.length) return true;
+    // Desktop sound cards and audio interfaces often deliver stereo, with the guitar on
+    // only one side (e.g. input 2 = right). Summing every channel catches it wherever it is.
+    let samples = channels[0];
+    if (channels.length > 1) {
+      if (this.mix.length !== samples.length) this.mix = new Float32Array(samples.length);
+      this.mix.fill(0);
+      for (const channel of channels) {
+        for (let i = 0; i < channel.length; i++) this.mix[i] += channel[i];
+      }
+      samples = this.mix;
     }
+    for (const reading of this.analyzer.push(samples)) this.port.postMessage(reading);
     return true;
   }
 }

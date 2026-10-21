@@ -16,6 +16,8 @@ import { useDemo } from "./demo";
 import { tunerEngine, type MicStatus } from "./engine";
 
 export const IN_TUNE_CENTS = 3;
+/** Once in tune, the string stays "in tune" until it drifts past this (no flicker at ±3). */
+export const LEAVE_IN_TUNE_CENTS = 5;
 const SLIGHT_CENTS = 15;
 
 export type TuneStatus =
@@ -26,6 +28,8 @@ export interface TunerState {
   mode: TunerMode;
   demo: boolean;
   mic: MicStatus;
+  /** Microphone input level (0 when not listening). */
+  level: number;
   /** Index of the string being tuned (0 = lowest), null before anything was heard in auto. */
   targetString: number | null;
   /** Target string's note. */
@@ -40,9 +44,10 @@ export interface TunerState {
   status: TuneStatus;
 }
 
-export function tuneStatus(cents: number | null): TuneStatus {
+/** `wasInTune` widens the in-tune window (hysteresis) so the state doesn't flicker. */
+export function tuneStatus(cents: number | null, wasInTune = false): TuneStatus {
   if (cents === null) return "noSignal";
-  if (Math.abs(cents) <= IN_TUNE_CENTS) return "inTune";
+  if (Math.abs(cents) <= (wasInTune ? LEAVE_IN_TUNE_CENTS : IN_TUNE_CENTS)) return "inTune";
   if (cents < 0) return cents >= -SLIGHT_CENTS ? "slightlyFlat" : "flat";
   return cents <= SLIGHT_CENTS ? "slightlySharp" : "sharp";
 }
@@ -88,11 +93,16 @@ export function useTuner(): TunerState {
   const targetString = mode === "manual" ? selectedString : (detected ?? remembered);
   const midi = targetString === null ? null : strings[targetString];
 
+  const [wasInTune, setWasInTune] = useState(false);
+  const status = tuneStatus(cents, wasInTune);
+  if ((status === "inTune") !== wasInTune) setWasInTune(status === "inTune");
+
   return {
     tuning,
     mode,
     demo,
     mic: engine.status,
+    level: engine.level,
     targetString,
     note: midi === null ? null : noteName(midi),
     octave: midi === null ? null : octaveOf(midi),
@@ -100,6 +110,6 @@ export function useTuner(): TunerState {
     targetFrequency: midi === null ? null : midiToFrequency(midi, a4),
     frequency,
     cents,
-    status: tuneStatus(cents),
+    status,
   };
 }

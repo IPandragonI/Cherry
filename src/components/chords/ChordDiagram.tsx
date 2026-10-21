@@ -23,7 +23,11 @@ export function ChordDiagram({ voicing, label, className }: ChordDiagramProps) {
   const y = (fret: number) => TOP + (fret - baseFret + 0.5) * FRET_GAP;
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className={className} role="img" aria-label={label}>
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      className={className}
+      {...(label ? { role: "img", "aria-label": label } : { "aria-hidden": true })}
+    >
       {baseFret === 1 ? (
         <rect
           x={LEFT - 1}

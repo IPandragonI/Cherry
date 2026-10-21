@@ -1,33 +1,48 @@
-// Renders the app icon (SVG) to the PNG sizes required by the web app manifest and iOS.
-import { mkdirSync, writeFileSync } from "node:fs";
+// Derives every app icon and the splash logo from the source logo at the project root
+// (new.png: 1254×1254, guitar pick on a cream rounded tile, no alpha).
+import { mkdirSync } from "node:fs";
 import sharp from "sharp";
 
-/** Two cherries hanging from a sage stem, on a cherry-red tile. `inset` shrinks the art. */
-function icon({ inset = 1, rounded = true } = {}) {
-  const art = `
-    <g transform="translate(256 256) scale(${inset}) translate(-256 -256)">
-      <path d="M262 112c-14 54-56 106-104 150M262 112c10 60 42 108 92 136" fill="none"
-        stroke="#b0c4b1" stroke-width="18" stroke-linecap="round"/>
-      <path d="M262 112c34-30 84-34 118-14-30 28-78 34-118 14Z" fill="#b0c4b1"/>
-      <circle cx="166" cy="322" r="86" fill="#f7e1d7"/>
-      <circle cx="354" cy="316" r="86" fill="#edafb8"/>
-      <circle cx="136" cy="292" r="20" fill="#ffffff" opacity=".75"/>
-      <circle cx="324" cy="286" r="20" fill="#ffffff" opacity=".6"/>
-    </g>`;
-  return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-    <rect width="512" height="512" rx="${rounded ? 112 : 0}" fill="#a8384c"/>${art}</svg>`);
+const SOURCE = "new.png";
+const TILE = "#fdf5ed"; // the logo's cream tile colour
+const MARGIN = 100; // crops away the white corners outside the rounded tile
+
+const meta = await sharp(SOURCE).metadata();
+const side = meta.width - MARGIN * 2;
+const tile = await sharp(SOURCE)
+  .extract({ left: MARGIN, top: MARGIN, width: side, height: side })
+  .png()
+  .toBuffer();
+
+/** Full-bleed square tile, optionally shrunk onto padding (maskable safe zone). */
+async function square(size, scale = 1) {
+  const inner = Math.round(size * scale);
+  const art = await sharp(tile).resize(inner, inner).toBuffer();
+  return sharp({ create: { width: size, height: size, channels: 4, background: TILE } })
+    .composite([{ input: art, gravity: "center" }])
+    .png();
+}
+
+/** Rounded tile with transparent corners, like the original artwork. */
+async function rounded(size) {
+  const r = Math.round(size * 0.22);
+  const mask = Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"><rect width="${size}" height="${size}" rx="${r}" fill="#fff"/></svg>`,
+  );
+  return sharp(tile)
+    .resize(size, size)
+    .composite([{ input: mask, blend: "dest-in" }])
+    .png({ compressionLevel: 9 });
 }
 
 mkdirSync("public/icons", { recursive: true });
-const jobs = [
-  ["icon-192.png", 192, icon()],
-  ["icon-512.png", 512, icon()],
-  // Maskable: full-bleed tile, art kept inside the 80% safe zone.
-  ["maskable-512.png", 512, icon({ inset: 0.78, rounded: false })],
-  ["apple-touch-icon.png", 180, icon({ inset: 0.9, rounded: false })],
-];
-for (const [name, size, svg] of jobs) {
-  await sharp(svg).resize(size, size).png().toFile(`public/icons/${name}`);
-}
-writeFileSync("public/icons/icon.svg", icon());
-console.log("icons written to public/icons");
+await (await rounded(192)).toFile("public/icons/icon-192.png");
+await (await rounded(512)).toFile("public/icons/icon-512.png");
+await (await rounded(48)).toFile("public/icons/favicon-48.png");
+// Maskable: the OS crops to its own shape, so the pick must sit inside the 80% safe zone.
+await (await square(512, 0.72)).toFile("public/icons/maskable-512.png");
+// iOS rounds the corners itself and dislikes transparency.
+await (await square(180)).toFile("public/icons/apple-touch-icon.png");
+// Splash screen logo (2× for a 160 px display size).
+await (await rounded(320)).webp({ quality: 90 }).toFile("public/logo.webp");
+console.log("icons and splash logo written from", SOURCE);

@@ -12,7 +12,10 @@ import { playNotes } from "@/lib/audio/tonePlayer";
 import { useT } from "@/lib/i18n/useT";
 import { LIBRARY_QUALITIES } from "@/lib/music/chordFormulas";
 import {
+  alternativeNames,
   chordById,
+  chordNotes,
+  formulaLabels,
   chordName,
   diagramFor,
   findChord,
@@ -112,6 +115,7 @@ export function ChordLibrary() {
             </div>
           </fieldset>
           <ChordCard key={`${root}-${quality}`} root={root} quality={quality} />
+          <ChordDetails root={root} quality={quality} />
         </>
       )}
     </div>
@@ -204,7 +208,7 @@ function ChordCard({ root, quality }: { root: string; quality: string }) {
               <ChordDiagram
                 voicing={v}
                 label={t("chords.diagram", { name, frets: fretsLabel(v.frets) })}
-                className="mx-auto h-52 w-auto"
+                className="mx-auto h-60 w-auto"
               />
             </button>
           ))}
@@ -220,11 +224,136 @@ function ChordCard({ root, quality }: { root: string; quality: string }) {
         </button>
       </div>
 
-      <p className="mt-1 text-center text-sm text-base-content/75 tabular-nums" aria-live="polite">
-        {t("chords.voicing", { n: Math.min(index, total - 1) + 1, total })}
-        <span className="ml-2 font-mono">{fretsLabel(current.frets)}</span>
-      </p>
+      <div className="mt-1 text-center" aria-live="polite">
+        <p className="text-sm font-medium text-base-content/75">
+          {t("chords.voicing", { n: Math.min(index, total - 1) + 1, total })}
+        </p>
+        <FingeringTable frets={current.frets} fingers={current.fingers} />
+      </div>
+
+      {total > 1 && (
+        <div
+          className="-mx-4 mt-3 flex [scrollbar-width:none] gap-2 overflow-x-auto px-4 pb-1"
+          aria-label={t("chords.allVoicings")}
+          role="group"
+        >
+          {chord.voicings.map((v, i) => (
+            <button
+              key={v.frets.join(",")}
+              type="button"
+              onClick={() => goTo(i)}
+              aria-current={i === index ? "true" : undefined}
+              aria-label={t("chords.voicing", { n: i + 1, total })}
+              className={`shrink-0 rounded-xl border-2 p-1 transition-colors ${
+                i === index
+                  ? "border-primary bg-base-100"
+                  : "border-transparent bg-base-100/60 hover:bg-base-100"
+              }`}
+            >
+              <ChordDiagram voicing={v} label="" className="h-20 w-auto" />
+            </button>
+          ))}
+        </div>
+      )}
     </article>
+  );
+}
+
+const STRING_NAMES = ["E", "A", "D", "G", "B", "e"];
+
+/** Per-string fret and finger notation, aligned under the diagram. */
+function FingeringTable({ frets, fingers }: { frets: Fret[]; fingers: (number | null)[] }) {
+  const t = useT();
+  return (
+    <table className="mx-auto mt-1.5 text-center tabular-nums">
+      <caption className="sr-only">{t("chords.fingering")}</caption>
+      <tbody>
+        <tr className="text-xs text-base-content/75">
+          <th scope="row" className="pr-3 text-left font-medium">
+            {t("chords.strings")}
+          </th>
+          {STRING_NAMES.map((n) => (
+            <td key={n} className="w-8">
+              {n}
+            </td>
+          ))}
+        </tr>
+        <tr className="font-mono text-lg font-semibold">
+          <th
+            scope="row"
+            className="pr-3 text-left font-sans text-xs font-medium text-base-content/75"
+          >
+            {t("chords.frets")}
+          </th>
+          {frets.map((f, i) => (
+            <td key={i}>{f === null ? "x" : f}</td>
+          ))}
+        </tr>
+        <tr className="font-mono text-sm text-primary">
+          <th
+            scope="row"
+            className="pr-3 text-left font-sans text-xs font-medium text-base-content/75"
+          >
+            {t("chords.fingers")}
+          </th>
+          {fingers.map((f, i) => (
+            <td key={i}>{f ?? "–"}</td>
+          ))}
+        </tr>
+      </tbody>
+    </table>
+  );
+}
+
+function ChordDetails({ root, quality }: { root: string; quality: string }) {
+  const t = useT();
+  const chord = findChord(root, quality);
+  if (!chord) return null;
+  const name = chordName(chord);
+  const others = chord.voicings[0]
+    ? alternativeNames(chord.voicings[0].frets, DEFAULT_TUNING.strings, name)
+    : [];
+  const notes = chordNotes(chord);
+  const formula = formulaLabels(chord.quality);
+
+  return (
+    <dl className="grid grid-cols-2 gap-3">
+      <div className="rounded-box bg-base-200 p-4">
+        <dt className="text-xs font-semibold tracking-wide text-base-content/75 uppercase">
+          {t("chords.notes")}
+        </dt>
+        <dd className="mt-2 flex flex-wrap gap-1.5">
+          {notes.map((n, i) => (
+            <span
+              key={n}
+              className={`badge badge-lg font-semibold ${i === 0 ? "badge-primary" : "bg-base-100"}`}
+            >
+              {n}
+            </span>
+          ))}
+        </dd>
+      </div>
+      <div className="rounded-box bg-base-200 p-4">
+        <dt className="text-xs font-semibold tracking-wide text-base-content/75 uppercase">
+          {t("chords.formula")}
+        </dt>
+        <dd className="mt-2 flex flex-wrap gap-1.5">
+          {formula.map((f) => (
+            <span key={f} className="badge bg-base-100 font-mono badge-lg font-semibold">
+              {f}
+            </span>
+          ))}
+        </dd>
+      </div>
+      {others.length > 0 && (
+        <div className="col-span-2 rounded-box bg-base-200 p-4">
+          <dt className="text-xs font-semibold tracking-wide text-base-content/75 uppercase">
+            {t("chords.aka")}
+          </dt>
+          <dd className="mt-1 font-display text-xl font-semibold">{others.join(" · ")}</dd>
+        </div>
+      )}
+    </dl>
   );
 }
 

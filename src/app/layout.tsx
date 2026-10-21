@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Fraunces, Instrument_Sans } from "next/font/google";
 import { SerwistProvider } from "@serwist/turbopack/react";
+import { Splash } from "@/components/Splash";
 import { StoreHydration } from "@/components/StoreHydration";
 import { ThemeSync } from "@/components/ThemeSync";
 import { SETTINGS_STORAGE_KEY } from "@/store/settings";
@@ -28,7 +29,7 @@ export const metadata: Metadata = {
   formatDetection: { telephone: false },
   icons: {
     icon: [
-      { url: "/icons/icon.svg", type: "image/svg+xml" },
+      { url: "/icons/favicon-48.png", sizes: "48x48", type: "image/png" },
       { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
     ],
     apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180" }],
@@ -62,6 +63,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: preHydrationScript }} />
       </head>
       <body className="min-h-dvh font-sans">
+        <Splash />
         <StoreHydration />
         <ThemeSync light={LIGHT_THEME_COLOR} dark={DARK_THEME_COLOR} />
         <SerwistProvider

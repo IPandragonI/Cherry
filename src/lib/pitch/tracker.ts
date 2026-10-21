@@ -23,6 +23,12 @@ export interface TrackerOptions {
   jumpCents: number;
   /** Invalid frames tolerated before the signal is declared lost. */
   holdFrames: number;
+  /** EMA weight of a new frame while the pitch is steady (heavier smoothing). */
+  steadyAlpha: number;
+  /** EMA weight once the pitch is clearly moving (e.g. turning a peg), to avoid lag. */
+  movingAlpha: number;
+  /** Deviation (cents) from the smoothed value at which the EMA becomes fully "moving". */
+  movingCents: number;
 }
 
 export const DEFAULT_TRACKER_OPTIONS: TrackerOptions = {
@@ -30,11 +36,14 @@ export const DEFAULT_TRACKER_OPTIONS: TrackerOptions = {
   maxFrequency: 1200,
   minClarity: 0.9,
   minRms: 0.004,
-  medianSize: 5,
+  medianSize: 7,
   lockFrames: 3,
   lockToleranceCents: 20,
   jumpCents: 60,
   holdFrames: 8,
+  steadyAlpha: 0.08,
+  movingAlpha: 0.5,
+  movingCents: 20,
 };
 
 export function median(values: readonly number[]): number {
@@ -45,14 +54,17 @@ export function median(values: readonly number[]): number {
 
 /**
  * Turns noisy per-frame pitch estimates into a steady reading: rejects unclear or quiet
- * frames, waits for a few agreeing frames before locking on (stability gate), smooths
- * with a running median, and holds the last value briefly through dropouts.
+ * frames, waits for a few agreeing frames before locking on (stability gate), removes
+ * outliers with a running median, then applies an adaptive exponential moving average in
+ * the log (cents) domain, and holds the last value briefly through dropouts.
  */
 export class PitchTracker {
   private readonly options: TrackerOptions;
   private history: number[] = [];
   private invalidFrames = 0;
   private locked = false;
+  /** Smoothed pitch as log2(frequency), null until locked. */
+  private smoothed: number | null = null;
 
   constructor(options: Partial<TrackerOptions> = {}) {
     this.options = { ...DEFAULT_TRACKER_OPTIONS, ...options };
@@ -71,7 +83,7 @@ export class PitchTracker {
     if (!valid) {
       this.invalidFrames++;
       if (this.invalidFrames > o.holdFrames) this.reset();
-      return this.locked ? median(this.history) : null;
+      return this.output();
     }
     this.invalidFrames = 0;
 
@@ -90,12 +102,28 @@ export class PitchTracker {
       if (!spread) return null;
       this.locked = true;
     }
-    return median(this.history);
+
+    const target = Math.log2(median(this.history));
+    if (this.smoothed === null) {
+      this.smoothed = target;
+    } else {
+      // Adaptive EMA (in the spirit of the 1€ filter): heavy smoothing for small jitter,
+      // quicker response when the string is actually being retuned.
+      const deviation = Math.min(1, (Math.abs(target - this.smoothed) * 1200) / o.movingCents);
+      const alpha = o.steadyAlpha + (o.movingAlpha - o.steadyAlpha) * deviation;
+      this.smoothed += alpha * (target - this.smoothed);
+    }
+    return this.output();
   }
 
   reset(): void {
     this.history = [];
     this.invalidFrames = 0;
     this.locked = false;
+    this.smoothed = null;
+  }
+
+  private output(): number | null {
+    return this.locked && this.smoothed !== null ? 2 ** this.smoothed : null;
   }
 }
