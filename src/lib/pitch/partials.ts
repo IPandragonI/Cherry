@@ -34,6 +34,11 @@ export interface RefinerOptions {
 /** How far the stiffness fit may land from the low-partial estimate. */
 const MAX_STIFFNESS_CENTS = 3;
 
+/** Width (cents) of the fall-off used to find the centre of the partials. */
+const CENTER_WIDTH = 4;
+/** Width (cents) of the fall-off of a partial's influence on the value. */
+const OUTLIER_WIDTH = 3;
+
 const DEFAULTS: RefinerOptions = {
   maxHarmonic: 6,
   maxFrequency: 1600,
@@ -167,28 +172,49 @@ export class PartialRefiner {
       f0: p.frequency / p.harmonic,
       w: (p.snr * p.harmonic) ** 2,
     }));
-    const consensus = weightedMedian(weighted);
-    const kept = weighted.filter(
-      (p) => Math.abs(1200 * Math.log2(p.f0 / consensus)) <= this.options.outlierCents,
-    );
-    const total = kept.reduce((s, p) => s + p.w, 0);
-    if (total === 0) return { frequency: consensus, support: 1, agreement: 0 };
-    const support = kept.length;
+    const cents = (f: number, ref: number) => 1200 * Math.log2(f / ref);
+    // Robust centre: from the weighted median, a few rounds of an average whose weights
+    // fade with distance. It settles on the same value whichever partial the median
+    // started from, so the reading cannot flip between partial sets frame to frame.
+    const start = weightedMedian(weighted);
+    let center = start;
+    for (let round = 0; round < 4; round++) {
+      center = logMean(
+        weighted.map((p) => ({ f0: p.f0, w: p.w * softness(cents(p.f0, center), CENTER_WIDTH) })),
+      );
+    }
+
+    // Confidence (not the value): partials within a few cents of the weighted median — a
+    // real partial value, which (unlike the soft centre) cannot drift towards a cluster of
+    // stray partials from strings ringing along once the played note has faded.
+    const support = weighted.filter(
+      (p) => Math.abs(cents(p.f0, start)) <= this.options.outlierCents,
+    ).length;
     const agreement = support / partials.length;
+    if (support === 0) return { frequency: center, support: 1, agreement: 0 };
+
+    // Soft membership: a partial's influence fades smoothly with its distance from the
+    // centre (e.g. a body resonance pulling the fundamental a few cents from the other
+    // partials) instead of switching on and off at a threshold, which made the reading
+    // oscillate. Partials far off (another string's partial) get no say at all.
+    const soft = weighted
+      .map((p) => ({ ...p, s: softness(cents(p.f0, center), OUTLIER_WIDTH) }))
+      .filter((p) => p.s > 0);
+
     // Estimate dominated by the fundamental and 2nd partial: barely touched by string
     // stiffness (upper partials of a real string run sharp), so it anchors the result.
     const low = logMean(
-      kept.map((p) => ({ f0: p.f0, w: (p.partial.snr / p.partial.harmonic) ** 2 })),
+      soft.map((p) => ({ f0: p.f0, w: p.s * (p.partial.snr / p.partial.harmonic) ** 2 })),
     );
     // The stiffness fit uses every partial for precision and removes their sharpness. If
-    // it strays from the low-partial estimate, it is amplifying noise (e.g. a body resonance
-    // nudging one partial) and the low-partial estimate is used instead.
-    const near = (f: number) => Math.abs(1200 * Math.log2(f / low)) <= MAX_STIFFNESS_CENTS;
-    const stiffness = fitStiffness(kept.map((k) => k.partial));
+    // it strays from the low-partial estimate, it is amplifying noise (e.g. a body
+    // resonance nudging one partial) and the low-partial estimate is used instead.
+    const near = (f: number) => Math.abs(cents(f, low)) <= MAX_STIFFNESS_CENTS;
+    const stiffness = fitStiffness(soft.map((p) => ({ partial: p.partial, scale: p.s })));
     if (stiffness && near(stiffness)) return { frequency: stiffness, support, agreement };
     // No usable fit: the most precise average (all partials, inverse-variance weights),
     // as long as it agrees with the anchor too.
-    const precise = logMean(kept);
+    const precise = logMean(soft.map((p) => ({ f0: p.f0, w: p.w * p.s })));
     return { frequency: near(precise) ? precise : low, support, agreement };
   }
 
@@ -245,12 +271,12 @@ export class PartialRefiner {
  * f0 and B. Returns the frequency of the fundamental partial, f0·√(1 + B) — what a hardware
  * tuner locks onto — even when the fundamental itself is too weak to measure (phone mics).
  */
-function fitStiffness(partials: PartialEstimate[]): number | null {
+function fitStiffness(partials: { partial: PartialEstimate; scale: number }[]): number | null {
   if (partials.length < 3) return null;
-  const points = partials.map((p) => ({
+  const points = partials.map(({ partial: p, scale }) => ({
     x: p.harmonic * p.harmonic,
     y: (p.frequency / p.harmonic) ** 2,
-    w: (p.snr * p.harmonic) ** 2,
+    w: scale * (p.snr * p.harmonic) ** 2,
   }));
   const sw = points.reduce((s, p) => s + p.w, 0);
   const mx = points.reduce((s, p) => s + p.w * p.x, 0) / sw;
@@ -302,6 +328,15 @@ export function unwrapFrequency(
 function logMean(items: { f0: number; w: number }[]): number {
   const total = items.reduce((s, p) => s + p.w, 0);
   return 2 ** (items.reduce((s, p) => s + p.w * Math.log2(p.f0), 0) / total);
+}
+
+/**
+ * Gaussian fall-off of a partial's weight with its distance (cents) from the centre;
+ * exactly 0 beyond 2.5 widths, so another string's partial has no influence at all.
+ */
+function softness(distance: number, width: number): number {
+  const z = distance / width;
+  return Math.abs(z) > 2.5 ? 0 : Math.exp(-z * z);
 }
 
 function weightedMedian(items: { f0: number; w: number }[]): number {
