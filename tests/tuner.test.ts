@@ -35,6 +35,8 @@ describe("displayDeviation", () => {
     expect(displayDeviation(5, false)).toBe(1);
     expect(displayDeviation(-5, false)).toBe(-1);
     expect(displayDeviation(50, false)).toBe(5);
+    expect(displayDeviation(-300, false)).toBe(-30);
+    expect(displayDeviation(2000, false)).toBe(100);
   });
 
   it("shows cents in precise mode", () => {
@@ -44,11 +46,14 @@ describe("displayDeviation", () => {
 });
 
 describe("gaugePosition", () => {
-  it("compresses the centre by default, like popular tuner apps", () => {
-    expect(gaugePosition(-10, false)).toBeCloseTo(-2);
-    expect(gaugePosition(20, false)).toBeCloseTo(8);
-    expect(gaugePosition(-50, false)).toBeCloseTo(-50);
-    expect(gaugePosition(80, false)).toBeCloseTo(50);
+  it("compresses the centre by default and reaches the edge at ±100", () => {
+    expect(gaugePosition(-10, false)).toBeCloseTo(-2.2, 1); // −1: ~4 % of the way
+    expect(gaugePosition(50, false)).toBeGreaterThan(14); // −5 is clearly off-centre
+    expect(gaugePosition(-1000, false)).toBeCloseTo(-50);
+    expect(gaugePosition(5000, false)).toBeCloseTo(50);
+    // Monotonic: further off is always further out.
+    const positions = [0, 5, 10, 20, 50, 100, 200, 500, 1000].map((c) => gaugePosition(c, false));
+    positions.slice(1).forEach((p, i) => expect(p).toBeGreaterThan(positions[i]));
   });
 
   it("is the real deviation in precise mode", () => {

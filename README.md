@@ -90,14 +90,14 @@ draws. The analysis is pure TypeScript shared by the worker and the tests:
    harmonics, as the ear's is, rather than by the fundamental, which an acoustic guitar's
    body pulls a few cents flat. Nothing is shown when no harmonic consensus confirms the
    pitch.
-4. Tracker: outliers ignored unless 3 frames confirm a jump, 9-frame median, adaptive EMA;
+4. Tracker: outliers ignored unless 3 frames confirm a jump, 7-frame median, EMA that speeds up when the pitch moves steadily (a peg turned: ~100 ms to settle);
    a note is only shown shortly after a pluck (or sound rising out of silence), and its
    value freezes once it has decayed by ~18 dB, so the quiet tail and strings ringing
    along never move the gauge.
 5. Display: the last value stays on screen for 4 s after the note fades, and changes under
    1 cent are not shown (`src/lib/audio/readingHold.ts`).
 
-By default the gauge number is in tenths of the cents (−10 cents shows −1, like popular tuner apps) on a scale compressed around the centre (10 cents off sits where 2 would) and a string is in tune within ±8 cents (left beyond ±10); **Settings → Precise mode** shows cents and is in tune within ±3 (left beyond ±5). Accuracy tests:
+By default the gauge number is in tenths of the cents (−10 cents shows −1, like popular tuner apps) up to ±100, on a logarithmic scale compressed around the centre (−1 sits 4 % of the way to the edge, ±100 at the edge) and a string is in tune within ±8 cents (left beyond ±10); **Settings → Precise mode** shows cents and is in tune within ±3 (left beyond ±5). Accuracy tests:
 `tests/calibration.test.ts`, `tests/accuracy.test.ts`, `tests/acoustic.test.ts` (an
 in-tune acoustic guitar on all six strings), `tests/scenarios.test.ts`. Real recordings
 saved with **Settings → Diagnostic audio → Record** can be dropped in `tests/recordings/`

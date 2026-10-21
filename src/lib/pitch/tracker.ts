@@ -38,9 +38,15 @@ export interface TrackerOptions {
   movingCents: number;
   /**
    * Once the note has decayed below this fraction of its peak level, the value is frozen:
-   * the quiet tail (and strings ringing along) only make it wander.
+   * the quiet tail (and strings ringing along) only make it wander…
    */
   decayFreezeRatio: number;
+  /** …unless the pitch moves further than this (cents): a peg being turned. */
+  freezeBreakCents: number;
+  /** EMA weight of the pitch-speed estimate. */
+  trendAlpha: number;
+  /** Steady pitch speed (cents per frame) at which the EMA becomes fully "moving". */
+  movingSpeedCents: number;
   /** A pitch can only lock on within this many frames of {@link PitchTracker.arm}. */
   armFrames: number;
 }
@@ -51,8 +57,8 @@ export const DEFAULT_TRACKER_OPTIONS: TrackerOptions = {
   minClarity: 0.7,
   sustainClarity: 0.55,
   minRms: 0.0001,
-  medianSize: 9,
-  averageSize: 5,
+  medianSize: 7,
+  averageSize: 3,
   lockFrames: 3,
   lockToleranceCents: 20,
   jumpCents: 35,
@@ -62,6 +68,9 @@ export const DEFAULT_TRACKER_OPTIONS: TrackerOptions = {
   movingAlpha: 0.7,
   movingCents: 20,
   decayFreezeRatio: 0.12,
+  freezeBreakCents: 3,
+  trendAlpha: 0.15,
+  movingSpeedCents: 1.5,
   armFrames: Infinity,
 };
 
@@ -89,6 +98,11 @@ export class PitchTracker {
   private candidates: number[] = [];
   /** Smoothed pitch as log2(frequency), null until locked. */
   private smoothed: number | null = null;
+  /** Smoothed signed pitch change per frame, log2 units (a peg being turned). */
+  private trend = 0;
+  private lastTarget: number | null = null;
+  /** Following a real move while the note fades (the freeze is lifted until caught up). */
+  private catchingUp = false;
   /** Loudest frame of the current note. */
   private peakRms = 0;
   /** Frames since the latest pluck. */
@@ -127,8 +141,7 @@ export class PitchTracker {
     }
     this.invalidFrames = 0;
 
-    // The note is dying out: keep showing the value it had rather than follow the tail.
-    if (this.locked && raw.rms < this.peakRms * o.decayFreezeRatio) return this.output();
+    const fading = this.locked && raw.rms < this.peakRms * o.decayFreezeRatio;
     this.peakRms = Math.max(this.peakRms, raw.rms);
 
     if (this.history.length > 0) {
@@ -169,12 +182,35 @@ export class PitchTracker {
     this.medians.push(Math.log2(median(this.history)));
     if (this.medians.length > o.averageSize) this.medians.shift();
     const target = this.medians.reduce((a, b) => a + b, 0) / this.medians.length;
+    // Signed speed of the pitch: steady in one direction while a peg is turned, while
+    // random jitter goes both ways and averages out to almost nothing.
+    if (this.lastTarget !== null) {
+      this.trend += o.trendAlpha * (target - this.lastTarget - this.trend);
+    }
+    this.lastTarget = target;
     if (this.smoothed === null) {
       this.smoothed = target;
+    } else if (
+      fading &&
+      !this.catchingUp &&
+      Math.abs(target - this.smoothed) * 1200 < o.freezeBreakCents
+    ) {
+      // The note is dying out: keep the value it had rather than follow the wandering tail.
     } else {
+      // A real move during the fade (a peg turned) is followed all the way, not only until
+      // it is back within the freeze window.
+      const gap = Math.abs(target - this.smoothed) * 1200;
+      this.catchingUp = fading && gap >= 0.5;
       // Adaptive EMA (in the spirit of the 1€ filter): heavy smoothing for small jitter,
-      // quicker response when the string is actually being retuned.
-      const deviation = Math.min(1, (Math.abs(target - this.smoothed) * 1200) / o.movingCents);
+      // quick response when the pitch is far from the display or moving steadily (a peg
+      // being turned), so the display does not lag behind the hand.
+      const deviation = Math.min(
+        1,
+        Math.max(
+          (Math.abs(target - this.smoothed) * 1200) / o.movingCents,
+          (Math.abs(this.trend) * 1200) / o.movingSpeedCents,
+        ),
+      );
       const alpha = o.steadyAlpha + (o.movingAlpha - o.steadyAlpha) * deviation;
       this.smoothed += alpha * (target - this.smoothed);
     }
@@ -186,6 +222,9 @@ export class PitchTracker {
     this.invalidFrames = 0;
     this.locked = false;
     this.smoothed = null;
+    this.trend = 0;
+    this.lastTarget = null;
+    this.catchingUp = false;
     this.candidates = [];
     this.medians = [];
     this.peakRms = 0;

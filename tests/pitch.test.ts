@@ -154,8 +154,9 @@ describe("PitchTracker", () => {
       }
     }
     const spread = (xs: number[]) => Math.sqrt(xs.reduce((s, x) => s + x * x, 0) / xs.length);
-    expect(spread(outCents)).toBeLessThan(spread(inCents) / 3);
-    expect(Math.max(...outCents.map(Math.abs))).toBeLessThan(5);
+    // Extreme detector noise; the smoothing is kept light enough not to lag behind a peg.
+    expect(spread(outCents)).toBeLessThan(spread(inCents) / 2);
+    expect(Math.max(...outCents.map(Math.abs))).toBeLessThan(6);
   });
 
   it("still follows a real retune quickly", () => {
@@ -175,9 +176,32 @@ describe("PitchTracker", () => {
   it("freezes the value once the note has died down (no wandering tail)", () => {
     const t = new PitchTracker({ lockFrames: 1 });
     for (let i = 0; i < 10; i++) t.update(frame(110, 0.97, 0.1));
+    // The quiet tail wanders by a couple of cents: the value does not move.
     for (let i = 0; i < 30; i++) {
-      expect(t.update(frame(110 * 2 ** (6 / 1200), 0.8, 0.005))).toBeCloseTo(110, 6);
+      const wander = 2 * Math.sin(i / 3);
+      expect(t.update(frame(110 * 2 ** (wander / 1200), 0.8, 0.005))).toBeCloseTo(110, 6);
     }
+  });
+
+  it("still follows a peg turned while the note dies down", () => {
+    const t = new PitchTracker({ lockFrames: 1 });
+    for (let i = 0; i < 10; i++) t.update(frame(110, 0.97, 0.1));
+    let out = 110;
+    for (let i = 0; i < 40; i++) out = t.update(frame(110 * 2 ** (10 / 1200), 0.8, 0.005))!;
+    expect(centsBetween(out, 110)).toBeCloseTo(10, 0);
+  });
+
+  it("keeps up with a peg being turned (little delay)", () => {
+    const t = new PitchTracker();
+    for (let i = 0; i < 40; i++) t.update(frame(110));
+    // 30 cents per second, ~21 ms per frame, for one second.
+    let out = 110;
+    let truth = 0;
+    for (let i = 0; i < 47; i++) {
+      truth = (i * 30 * 1024) / 48000;
+      out = t.update(frame(110 * 2 ** (truth / 1200)))!;
+    }
+    expect(truth - centsBetween(out, 110)).toBeLessThan(4.5); // was ~6 before
   });
 
   it("only locks onto a sound shortly after it was armed by a pluck", () => {

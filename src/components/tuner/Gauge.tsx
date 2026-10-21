@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { FlatIcon, SharpIcon } from "@/components/ui/icons";
-import { displayDeviation, gaugePosition } from "@/lib/audio/useTuner";
+import { MAX_DISPLAY, displayDeviation, gaugePosition } from "@/lib/audio/useTuner";
 import { useT } from "@/lib/i18n/useT";
 import { clampCents } from "@/lib/music/notes";
 
@@ -11,8 +11,8 @@ const MARKER_W = 48;
 const MARKER_H = 56;
 /** Inset of the ±50 cent positions from the field edges, leaving room for ♭ / ♯. */
 const EDGE = 34;
-/** Marker easing time constant (ms), on top of the tracker's own smoothing. */
-const EASE_MS = 140;
+/** Marker glide (ms): a critically damped spring, so it starts and stops softly. */
+const GLIDE_MS = 90;
 /** Must match the dot-field scroll in globals.css (one 14 px row every 1.1 s). */
 const SCROLL_PX_PER_MS = 14 / 1100;
 /** A trail point fades out over this long once it is emitted. */
@@ -23,7 +23,7 @@ const xFor = (cents: number, width: number) =>
 
 function formatDeviation(cents: number | null, precise: boolean): string {
   if (cents === null) return "–";
-  const rounded = displayDeviation(clampCents(cents), precise);
+  const rounded = displayDeviation(cents, precise);
   if (rounded === 0) return "0";
   return rounded > 0 ? `+${rounded}` : `−${Math.abs(rounded)}`;
 }
@@ -91,14 +91,26 @@ export function Gauge({ cents, inTune, precise }: GaugeProps) {
     let frames = 0;
     const trail: TrailPoint[] = [];
     let position = targetRef.current;
+    let velocity = 0;
     let last = performance.now();
     let frame = requestAnimationFrame(function tick(now) {
       const dt = Math.min(64, now - last);
       last = now;
       const target = targetRef.current;
-      position = reduced.matches
-        ? target
-        : position + (target - position) * (1 - Math.exp(-dt / EASE_MS));
+      if (reduced.matches) {
+        position = target;
+        velocity = 0;
+      } else {
+        // Critically damped spring ("SmoothDamp"): no jump when the target changes and no
+        // overshoot, whether the note holds still or moves.
+        const omega = 2 / GLIDE_MS;
+        const x = omega * dt;
+        const decay = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
+        const change = position - target;
+        const temp = (velocity + omega * change) * dt;
+        velocity = (velocity - omega * temp) * decay;
+        position = target + (change + temp) * decay;
+      }
       const x = xFor(position, width);
       marker.style.transform = `translate3d(${x - MARKER_W / 2}px,-50%,0)`;
 
@@ -151,7 +163,7 @@ export function Gauge({ cents, inTune, precise }: GaugeProps) {
 
   const active = cents !== null;
   const value = formatDeviation(cents, precise);
-  const range = displayDeviation(50, precise);
+  const range = MAX_DISPLAY;
   const lowest = -range;
   const line = inTune ? "var(--color-primary)" : "var(--tuner-ink)";
   const accent = inTune ? "var(--tuner-ok)" : "var(--color-primary)";
@@ -163,7 +175,7 @@ export function Gauge({ cents, inTune, precise }: GaugeProps) {
       role="meter"
       aria-valuemin={lowest}
       aria-valuemax={range}
-      aria-valuenow={active ? displayDeviation(clampCents(cents), precise) : 0}
+      aria-valuenow={active ? displayDeviation(cents, precise) : 0}
       aria-valuetext={
         active
           ? inTune
@@ -236,7 +248,7 @@ export function Gauge({ cents, inTune, precise }: GaugeProps) {
               x={24}
               y={28}
               textAnchor="middle"
-              fontSize={value.length > 2 ? 15 : 17}
+              fontSize={value.length > 3 ? 12 : value.length > 2 ? 15 : 17}
               fontWeight={800}
               fill="var(--color-primary)"
               className="tabular-nums"

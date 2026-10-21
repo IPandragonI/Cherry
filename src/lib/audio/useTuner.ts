@@ -73,24 +73,32 @@ export function tuneStatus(cents: number | null, wasInTune = false, precise = fa
   return cents <= SLIGHT_CENTS ? "slightlySharp" : "sharp";
 }
 
+/** Largest number the gauge shows, either way (beyond, it stays at ±100). */
+export const MAX_DISPLAY = 100;
+/** Relaxed scale: how quickly the marker leaves the centre (smaller = sooner). */
+const RELAXED_SPREAD = 1.5;
+
 /**
  * The number shown for a deviation: cents in precise mode, otherwise tenths of the cents
- * (−10 cents shows −1), rounded symmetrically.
+ * (−10 cents shows −1), rounded symmetrically, up to ±100.
  */
 export function displayDeviation(cents: number, precise: boolean): number {
   const value = precise ? cents : cents / RELAXED_CENTS_PER_UNIT;
-  const rounded = Math.sign(value) * Math.round(Math.abs(value));
+  const rounded = Math.sign(value) * Math.min(MAX_DISPLAY, Math.round(Math.abs(value)));
   return rounded === 0 ? 0 : rounded;
 }
 
 /**
- * Where the marker sits on the gauge (in cents of the ±50 scale). Precise mode: the real
- * deviation. Otherwise compressed around the centre like popular tuner apps — 10 cents off
- * sits where 2 would, 20 where 8 would — while a string far off still reaches the edge.
+ * Where the marker sits on the gauge, on a ±50 scale. Precise mode: the real deviation in
+ * cents. Otherwise a smooth logarithmic scale over the whole −100…+100 range, compressed
+ * around the centre like popular tuner apps: −1 sits 4 % of the way to the edge, −5
+ * (50 cents) 30 %, −20 62 %, −100 at the edge.
  */
 export function gaugePosition(cents: number, precise: boolean): number {
-  const c = clampCents(cents);
-  return precise ? c : Math.sign(c) * 50 * (Math.abs(c) / 50) ** 2;
+  if (precise) return clampCents(cents);
+  const units = Math.min(MAX_DISPLAY, Math.abs(cents) / RELAXED_CENTS_PER_UNIT);
+  const curve = (u: number) => Math.log1p((u / RELAXED_SPREAD) ** 2);
+  return Math.sign(cents) * 50 * (curve(units) / curve(MAX_DISPLAY));
 }
 
 /** Single source of truth for the tuner UI: microphone (or demo) input + settings. */
