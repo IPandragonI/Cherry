@@ -7,8 +7,15 @@ const LOOKAHEAD_S = 0.12;
 const TICK_MS = 25;
 const CLICK_S = 0.05;
 
-export type MetronomeSound = "click" | "beep" | "woodblock" | "rimshot";
-export const METRONOME_SOUNDS: MetronomeSound[] = ["click", "beep", "woodblock", "rimshot"];
+export type MetronomeSound = "click" | "mechanical" | "beep" | "woodblock" | "rimshot" | "kick";
+export const METRONOME_SOUNDS: MetronomeSound[] = [
+  "click",
+  "mechanical",
+  "beep",
+  "woodblock",
+  "rimshot",
+  "kick",
+];
 
 /**
  * Tempo from tap times (ms): median interval of the recent taps, ignoring anything
@@ -143,6 +150,64 @@ class Metronome {
       osc.connect(out);
       osc.start(time);
       osc.stop(time + 0.12);
+      return;
+    }
+
+    if (sound === "kick") {
+      // Bass drum: a sine sweeping down fast, plus a soft beater click.
+      const osc = ctx.createOscillator();
+      osc.frequency.setValueAtTime(accent ? 160 : 140, time);
+      osc.frequency.exponentialRampToValueAtTime(45, time + 0.12);
+      envelope(accent ? 1.1 : 0.85, 0.35);
+      osc.connect(out);
+      osc.start(time);
+      osc.stop(time + 0.4);
+      const beater = ctx.createBufferSource();
+      const beaterGain = ctx.createGain();
+      const tone = ctx.createBiquadFilter();
+      beater.buffer = this.noiseBuffer();
+      tone.type = "lowpass";
+      tone.frequency.value = 3000;
+      beaterGain.gain.setValueAtTime(0.25, time);
+      beaterGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.012);
+      beater.connect(tone).connect(beaterGain).connect(ctx.destination);
+      beater.start(time);
+      beater.stop(time + 0.02);
+      return;
+    }
+
+    if (sound === "mechanical") {
+      // Pendulum metronome: a dry wooden tick from the escapement; the downbeat also rings
+      // the little bell, as on the classic models.
+      const tick = ctx.createBufferSource();
+      const body = ctx.createBiquadFilter();
+      const air = ctx.createBiquadFilter();
+      tick.buffer = this.noiseBuffer();
+      body.type = "bandpass";
+      body.frequency.value = 3400;
+      body.Q.value = 6;
+      air.type = "highpass";
+      air.frequency.value = 1500;
+      tick.connect(air).connect(body).connect(out);
+      envelope(1.6, 0.018);
+      tick.start(time);
+      tick.stop(time + 0.04);
+      if (accent) {
+        for (const [frequency, level] of [
+          [2350, 0.22],
+          [5870, 0.06],
+        ]) {
+          const bell = ctx.createOscillator();
+          const ring = ctx.createGain();
+          bell.frequency.value = frequency;
+          ring.gain.setValueAtTime(0.0001, time);
+          ring.gain.exponentialRampToValueAtTime(level, time + 0.003);
+          ring.gain.exponentialRampToValueAtTime(0.0001, time + 0.6);
+          bell.connect(ring).connect(ctx.destination);
+          bell.start(time);
+          bell.stop(time + 0.65);
+        }
+      }
       return;
     }
 

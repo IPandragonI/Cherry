@@ -16,8 +16,10 @@ export interface TrackerOptions {
   /** Lower clarity accepted once locked, so the decaying tail of a note keeps reading. */
   sustainClarity: number;
   minRms: number;
-  /** Median window length (frames). */
+  /** Median window length (frames): removes outliers. */
   medianSize: number;
+  /** Moving average over this many successive medians: removes the remaining jitter. */
+  averageSize: number;
   /** Consecutive agreeing frames required before a pitch is reported. */
   lockFrames: number;
   /** Max spread (cents) between recent frames for them to "agree". */
@@ -42,14 +44,15 @@ export const DEFAULT_TRACKER_OPTIONS: TrackerOptions = {
   minClarity: 0.7,
   sustainClarity: 0.55,
   minRms: 0.0001,
-  medianSize: 7,
+  medianSize: 9,
+  averageSize: 5,
   lockFrames: 3,
   lockToleranceCents: 20,
   jumpCents: 35,
   confirmFrames: 3,
   holdFrames: 8,
   steadyAlpha: 0.08,
-  movingAlpha: 0.5,
+  movingAlpha: 0.7,
   movingCents: 20,
 };
 
@@ -69,6 +72,8 @@ export function median(values: readonly number[]): number {
 export class PitchTracker {
   private readonly options: TrackerOptions;
   private history: number[] = [];
+  /** Recent medians, log2(Hz), for the moving average. */
+  private medians: number[] = [];
   private invalidFrames = 0;
   private locked = false;
   /** Consecutive frames far from the current pitch, waiting to be confirmed as a new note. */
@@ -129,7 +134,10 @@ export class PitchTracker {
       this.locked = true;
     }
 
-    const target = Math.log2(median(this.history));
+    // Median (outliers) → moving average of the medians (jitter) → adaptive EMA (display).
+    this.medians.push(Math.log2(median(this.history)));
+    if (this.medians.length > o.averageSize) this.medians.shift();
+    const target = this.medians.reduce((a, b) => a + b, 0) / this.medians.length;
     if (this.smoothed === null) {
       this.smoothed = target;
     } else {
@@ -148,6 +156,7 @@ export class PitchTracker {
     this.locked = false;
     this.smoothed = null;
     this.candidates = [];
+    this.medians = [];
   }
 
   private output(): number | null {

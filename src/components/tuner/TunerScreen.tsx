@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronDownIcon, MicIcon, MicOffIcon, PaletteIcon } from "@/components/ui/icons";
 import { sweepCents, useDemo } from "@/lib/audio/demo";
 import { tunerEngine } from "@/lib/audio/engine";
-import { PLUCK_DURATION_MS, playNotes } from "@/lib/audio/tonePlayer";
+import { PLUCK_DURATION_MS, playChime, playNotes } from "@/lib/audio/tonePlayer";
 import { useTuner } from "@/lib/audio/useTuner";
 import { tuningName, useNotation, useT } from "@/lib/i18n/useT";
 import type { MessageKey } from "@/lib/i18n/messages";
@@ -22,7 +22,7 @@ import { TuningPicker, tuningNotes } from "./TuningPicker";
 export function TunerScreen() {
   const t = useT();
   const tuner = useTuner();
-  const { skin, headstock, a4, refTone, haptics, leftHanded } = useSettings();
+  const { skin, headstock, a4, refTone, haptics, tuneChime, leftHanded } = useSettings();
   const notation = useNotation();
   const setSettings = useSettings((s) => s.set);
   const selectString = useSettings((s) => s.selectString);
@@ -38,12 +38,15 @@ export function TunerScreen() {
     return () => tunerEngine.stop();
   }, [hydrated, tuner.demo]);
 
-  // One short buzz each time a string reaches the in-tune zone.
+  // One short buzz and a soft chime each time a string reaches the in-tune zone.
   const wasInTune = useRef(false);
   useEffect(() => {
-    if (inTune && !wasInTune.current && haptics && !tuner.demo) navigator.vibrate?.(40);
+    if (inTune && !wasInTune.current && !tuner.demo) {
+      if (haptics) navigator.vibrate?.(40);
+      if (tuneChime) playChime();
+    }
     wasInTune.current = inTune;
-  }, [inTune, haptics, tuner.demo]);
+  }, [inTune, haptics, tuneChime, tuner.demo]);
 
   const onSelectString = (index: number) => {
     selectString(index);

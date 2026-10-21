@@ -30,6 +30,8 @@ export interface Settings {
   selectedString: number;
   refTone: boolean;
   haptics: boolean;
+  /** A soft chime each time a string reaches in tune. */
+  tuneChime: boolean;
   demo: boolean;
   notation: NotationPref;
   /** Mirrors the headstock and the string indicators for left-handed players. */
@@ -37,7 +39,7 @@ export interface Settings {
   bpm: number;
   /** Beats per bar (the first one is accented). */
   beatsPerBar: number;
-  metronomeSound: "click" | "beep" | "woodblock" | "rimshot";
+  metronomeSound: "click" | "mechanical" | "beep" | "woodblock" | "rimshot" | "kick";
 }
 
 interface SettingsActions {
@@ -59,6 +61,7 @@ export const DEFAULT_SETTINGS: Settings = {
   selectedString: 0,
   refTone: true,
   haptics: true,
+  tuneChime: true,
   demo: false,
   notation: "letters",
   leftHanded: false,
@@ -101,6 +104,7 @@ export const useSettings = create<Settings & SettingsActions>()(
         selectedString: s.selectedString,
         refTone: s.refTone,
         haptics: s.haptics,
+        tuneChime: s.tuneChime,
         demo: s.demo,
         notation: s.notation,
         leftHanded: s.leftHanded,

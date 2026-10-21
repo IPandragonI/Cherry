@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { karplusStrong } from "@/lib/audio/karplus";
 import { centsBetween, midiToFrequency, parseNote } from "@/lib/music/notes";
 import { PitchAnalyzer } from "@/lib/pitch/analyzer";
+import { unwrapFrequency } from "@/lib/pitch/partials";
 import { PitchTracker, median } from "@/lib/pitch/tracker";
 
 const SAMPLE_RATE = 48000;
@@ -177,5 +178,31 @@ describe("PitchTracker", () => {
     expect(t.update(null)).toBeCloseTo(110, 9);
     expect(t.update(null)).toBeCloseTo(110, 9);
     expect(t.update(null)).toBeNull();
+  });
+});
+
+describe("phase unwrapping (spectral precision stage)", () => {
+  const hop = 1024;
+  const sr = 48000;
+  const advance = (f: number, lag: number) =>
+    // Raw phase difference, as measured: wrapped into (−π, π].
+    Math.atan2(
+      Math.sin((2 * Math.PI * f * lag * hop) / sr),
+      Math.cos((2 * Math.PI * f * lag * hop) / sr),
+    );
+
+  it("recovers the exact frequency from a rough peak estimate 4 Hz off", () => {
+    // A high partial of a low E (6 × 82.4 Hz) whose blurred peak reads 4 Hz low.
+    const truth = 494.45;
+    const advances = [1, 2, 4, 8].map((lag) => ({ lag, phase: advance(truth, lag) }));
+    expect(unwrapFrequency(truth - 4, advances, hop, sr)).toBeCloseTo(truth, 6);
+    expect(unwrapFrequency(truth + 9, advances, hop, sr)).toBeCloseTo(truth, 6);
+  });
+
+  it("unwrapping the longest interval alone would land a whole cycle off", () => {
+    // The old single-step method: off by sampleRate / (8·hop) = 5.86 Hz → −20 cents on E2.
+    const truth = 494.45;
+    const single = unwrapFrequency(truth - 4, [{ lag: 8, phase: advance(truth, 8) }], hop, sr);
+    expect(Math.abs(single - truth)).toBeCloseTo(sr / (8 * hop), 6);
   });
 });

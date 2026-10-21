@@ -215,18 +215,18 @@ export class PartialRefiner {
     const interpolated = this.interpolate(bin) * binHz;
     // A frame belongs to the current note only once its whole window comes after the
     // last reset (pluck), i.e. `maxLag` hops later; never compare with an older one.
-    const lag = Math.min(this.maxLag, this.count - this.maxLag - 1);
-    if (lag < 1 || bin > this.maxBin) return interpolated;
-    const then = this.history[(this.head - lag + this.history.length) % this.history.length];
+    const longest = Math.min(this.maxLag, this.count - this.maxLag - 1);
+    if (longest < 1 || bin > this.maxBin) return interpolated;
     const now = this.history[this.head];
-    const advance =
-      Math.atan2(now[2 * bin + 1], now[2 * bin]) - Math.atan2(then[2 * bin + 1], then[2 * bin]);
-    // The interpolated peak (≈0.05 bin) predicts the advance well enough to unwrap it.
-    const seconds = (lag * this.hop) / this.sampleRate;
-    let correction = advance - 2 * Math.PI * interpolated * seconds;
-    correction -= 2 * Math.PI * Math.round(correction / (2 * Math.PI));
-    if (Math.abs(correction) > 0.8 * Math.PI) return interpolated;
-    return interpolated + correction / (2 * Math.PI * seconds);
+    const phaseNow = Math.atan2(now[2 * bin + 1], now[2 * bin]);
+    const advances: PhaseAdvance[] = [];
+    for (let lag = 1; lag <= longest; lag *= 2) {
+      const then = this.history[(this.head - lag + this.history.length) % this.history.length];
+      advances.push({ lag, phase: phaseNow - Math.atan2(then[2 * bin + 1], then[2 * bin]) });
+    }
+    const measured = unwrapFrequency(interpolated, advances, this.hop, this.sampleRate);
+    // The phase must still land on the same spectral peak.
+    return Math.abs(measured - interpolated) <= 1.5 * binHz ? measured : interpolated;
   }
 
   /** Peak position in bins from a parabola through the log magnitudes (Hann: ~0.05 bin). */
@@ -264,6 +264,38 @@ function fitStiffness(partials: PartialEstimate[]): number | null {
   // Real guitar strings: B is roughly 1e-5…1e-3. Anything else is noise, not physics.
   if (!(stiffness >= 0 && stiffness < 2e-3)) return null;
   return Math.sqrt(f0Squared) * Math.sqrt(1 + stiffness);
+}
+
+export interface PhaseAdvance {
+  /** Interval in hops between the two frames. */
+  lag: number;
+  /** Phase difference of the partial's bin between them (any 2π offset). */
+  phase: number;
+}
+
+/**
+ * Frequency of a partial from its phase advance over increasing intervals (1, 2, 4, 8…
+ * hops). A phase advance only pins the frequency down modulo sampleRate / (lag·hop) —
+ * 5.9 Hz over 8 hops at 48 kHz — so unwrapping the longest one directly from a rough peak
+ * estimate can land a whole cycle off when the peak is blurred (an acoustic guitar's high
+ * partials), which shows up as an error of 5.9 Hz ÷ harmonic number: −20 cents on a low E.
+ * Each stage is unwrapped against the previous one instead, so the rough estimate only
+ * needs to be within ~±23 Hz, and the result keeps the precision of the longest interval.
+ */
+export function unwrapFrequency(
+  estimate: number,
+  advances: PhaseAdvance[],
+  hop: number,
+  sampleRate: number,
+): number {
+  let frequency = estimate;
+  for (const { lag, phase } of [...advances].sort((a, b) => a.lag - b.lag)) {
+    const seconds = (lag * hop) / sampleRate;
+    let correction = phase - 2 * Math.PI * frequency * seconds;
+    correction -= 2 * Math.PI * Math.round(correction / (2 * Math.PI));
+    frequency += correction / (2 * Math.PI * seconds);
+  }
+  return frequency;
 }
 
 /** Weighted mean in the log domain (cents), back in Hz. */

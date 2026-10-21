@@ -42,3 +42,28 @@ export function playNotes(frequencies: number[], { strumMs = 0, gain = 0.6 } = {
     source.start(start + (i * strumMs) / 1000);
   });
 }
+
+/**
+ * Soft two-tone "ding" when a string reaches in tune. C7 + G7 sit far above what the
+ * tuner analyses (low-passed at 1 kHz, partials searched up to 1.6 kHz), so the microphone
+ * hearing it cannot disturb the reading.
+ */
+export function playChime(): void {
+  const audio = context();
+  unlockPlayback(audio);
+  const start = audio.currentTime + 0.01;
+  for (const [frequency, level] of [
+    [2093, 0.05],
+    [3136, 0.025],
+  ]) {
+    const osc = audio.createOscillator();
+    const gain = audio.createGain();
+    osc.frequency.value = frequency;
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(level, start + 0.008);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.6);
+    osc.connect(gain).connect(audio.destination);
+    osc.start(start);
+    osc.stop(start + 0.65);
+  }
+}

@@ -24,6 +24,7 @@ const TOGGLES = [
   ["leftHanded", "settings.leftHanded"],
   ["refTone", "settings.refTone"],
   ["haptics", "settings.haptics"],
+  ["tuneChime", "settings.tuneChime"],
   ["demo", "settings.demo"],
 ] as const;
 

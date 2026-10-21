@@ -2,7 +2,13 @@
 
 import { useEffect, useRef } from "react";
 import { PlayIcon } from "@/components/ui/icons";
-import { METRONOME_SOUNDS, metronome, tapTempo, tempoMarking } from "@/lib/audio/metronome";
+import {
+  METRONOME_SOUNDS,
+  metronome,
+  tapTempo,
+  tempoMarking,
+  type MetronomeSound,
+} from "@/lib/audio/metronome";
 import { useT } from "@/lib/i18n/useT";
 import { MAX_BPM, MIN_BPM, useSettings } from "@/store/settings";
 
@@ -111,27 +117,32 @@ export function MetronomeScreen() {
       </div>
 
       <div>
-        <p id="sound-label" className="mb-2 text-sm font-medium text-base-content/75">
+        <label htmlFor="sound" className="mb-2 block text-sm font-medium text-base-content/75">
           {t("metronome.sound")}
-        </p>
-        <div role="radiogroup" aria-labelledby="sound-label" className="grid grid-cols-2 gap-2">
-          {METRONOME_SOUNDS.map((id) => (
-            <button
-              key={id}
-              type="button"
-              role="radio"
-              aria-checked={sound === id}
-              onClick={() => {
-                set({ metronomeSound: id });
-                if (!playing) metronome.preview(id);
-              }}
-              className={`min-h-12 rounded-full text-sm font-semibold transition-colors ${
-                sound === id ? "bg-primary text-primary-content" : "bg-base-200 hover:bg-base-300"
-              }`}
-            >
-              {t(`metronome.sound.${id}`)}
-            </button>
-          ))}
+        </label>
+        {/* Native select: a wheel picker on iOS, a dropdown elsewhere. */}
+        <div className="flex gap-2">
+          <select
+            id="sound"
+            className="select min-h-12 flex-1 rounded-full"
+            value={sound}
+            onChange={(e) => set({ metronomeSound: e.target.value as MetronomeSound })}
+          >
+            {METRONOME_SOUNDS.map((id) => (
+              <option key={id} value={id}>
+                {t(`metronome.sound.${id}`)}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="btn btn-circle size-12 bg-base-200 btn-ghost"
+            aria-label={t("metronome.preview")}
+            disabled={playing}
+            onClick={() => metronome.preview(sound)}
+          >
+            <PlayIcon width={20} height={20} />
+          </button>
         </div>
       </div>
 
