@@ -125,7 +125,7 @@ describe("PitchTracker", () => {
   it("rejects unclear, quiet and out-of-range frames", () => {
     const t = new PitchTracker({ lockFrames: 1 });
     expect(t.update(frame(110, 0.5))).toBeNull();
-    expect(t.update(frame(110, 0.97, 0.0001))).toBeNull();
+    expect(t.update(frame(110, 0.97, 0.00005))).toBeNull();
     expect(t.update(frame(20))).toBeNull();
     expect(t.update(frame(110))).toBeCloseTo(110, 9);
   });

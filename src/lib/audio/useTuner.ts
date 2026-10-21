@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { create } from "zustand";
 import {
   centsBetween,
   midiToFrequency,
@@ -44,6 +45,12 @@ export interface TunerState {
   status: TuneStatus;
 }
 
+/**
+ * Last string heard in auto mode. Kept outside the component so the string pills keep
+ * their selection when the user switches tabs and comes back (no reset/flicker).
+ */
+const useLastDetected = create<{ index: number | null }>()(() => ({ index: null }));
+
 /** `wasInTune` widens the in-tune window (hysteresis) so the state doesn't flicker. */
 export function tuneStatus(cents: number | null, wasInTune = false): TuneStatus {
   if (cents === null) return "noSignal";
@@ -85,9 +92,11 @@ export function useTuner(): TunerState {
     }
   }
 
-  // Auto mode keeps pointing at the last detected string between notes.
-  const [lastDetected, setLastDetected] = useState<number | null>(null);
-  if (detected !== null && detected !== lastDetected) setLastDetected(detected);
+  // Auto mode keeps pointing at the last detected string between notes (and across tabs).
+  const lastDetected = useLastDetected((s) => s.index);
+  useEffect(() => {
+    if (detected !== null) useLastDetected.setState({ index: detected });
+  }, [detected]);
 
   const remembered = lastDetected !== null && lastDetected < strings.length ? lastDetected : null;
   const targetString = mode === "manual" ? selectedString : (detected ?? remembered);

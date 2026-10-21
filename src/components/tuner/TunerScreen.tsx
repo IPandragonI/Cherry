@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { ChevronDownIcon, MicIcon, PaletteIcon } from "@/components/ui/icons";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { ChevronDownIcon, MicIcon, MicOffIcon, PaletteIcon } from "@/components/ui/icons";
 import { sweepCents, useDemo } from "@/lib/audio/demo";
 import { tunerEngine } from "@/lib/audio/engine";
 import { PLUCK_DURATION_MS, playNotes } from "@/lib/audio/tonePlayer";
@@ -21,7 +21,7 @@ import { TuningPicker, tuningNotes } from "./TuningPicker";
 export function TunerScreen() {
   const t = useT();
   const tuner = useTuner();
-  const { skin, a4, refTone, haptics } = useSettings();
+  const { skin, headstock, a4, refTone, haptics } = useSettings();
   const setSettings = useSettings((s) => s.set);
   const selectString = useSettings((s) => s.selectString);
   const [sheet, setSheet] = useState<"tuning" | "skin" | null>(null);
@@ -92,14 +92,15 @@ export function TunerScreen() {
         </div>
       </header>
 
-      <section className="flex h-[170px] shrink-0 flex-col justify-end px-6 pb-1">
+      <section className="h-[120px] shrink-0 px-4 py-2">
         <Gauge cents={tuner.cents} inTune={inTune} />
       </section>
 
-      <div className="flex min-h-0 flex-1 items-center justify-center">
-        <div className="h-[clamp(200px,38dvh,340px)]">
+      <div className="flex min-h-0 flex-1 items-center justify-center px-4">
+        <div className="h-[clamp(220px,44dvh,380px)] w-full">
           <Neck
             skin={skin}
+            model={headstock}
             strings={tuner.tuning.strings.length}
             target={tuner.targetString}
             inTune={inTune}
@@ -107,8 +108,13 @@ export function TunerScreen() {
         </div>
       </div>
 
-      <div className="space-y-3 py-3">
-        <Readout {...tuner} />
+      <div className="space-y-2 py-3">
+        <div className="flex items-center pr-6">
+          <div className="min-w-0 flex-1">
+            <Readout {...tuner} />
+          </div>
+          {!tuner.demo && <MicToggle />}
+        </div>
         <MicControl />
         <StringPills
           strings={tuner.tuning.strings}
@@ -136,56 +142,86 @@ const MIC_ERRORS: Partial<Record<string, MessageKey>> = {
   error: "mic.error",
 };
 
-/** Listening states: nothing while it works, otherwise what is needed to recover. */
+/** Fixed-height status slot: its content changes, the layout below never moves. */
 function MicControl() {
   const t = useT();
   const { mic, demo } = useTuner();
 
-  if (demo) return <DemoPanel />;
-  if (mic === "running" || mic === "idle") return null;
-
-  if (mic === "starting") {
-    return (
-      <p className="flex items-center justify-center gap-2 px-6 text-sm text-base-content/75">
+  let content: ReactNode = null;
+  if (demo) {
+    content = <DemoPanel />;
+  } else if (mic === "starting") {
+    content = (
+      <p className="flex items-center justify-center gap-2 text-sm text-base-content/75">
         <span className="loading loading-xs loading-dots" aria-hidden="true" />
         {t("tuner.starting")}
       </p>
     );
-  }
-
-  // Some browsers keep audio paused until the first interaction with the page.
-  if (mic === "suspended") {
-    return (
-      <div className="px-6">
-        <button
-          type="button"
-          className="btn min-h-12 w-full rounded-full btn-soft btn-primary"
-          onClick={() => tunerEngine.resume()}
-        >
-          <MicIcon width={20} height={20} />
-          {t("tuner.tapToListen")}
-        </button>
+  } else if (mic === "off") {
+    content = <p className="text-center text-sm text-base-content/75">{t("mic.paused")}</p>;
+  } else if (mic === "suspended") {
+    // Some browsers (desktop Chrome, Firefox) keep audio paused until the first click.
+    content = (
+      <button
+        type="button"
+        className="btn h-11 min-h-11 w-full rounded-full btn-soft btn-primary"
+        onClick={() => tunerEngine.resume()}
+      >
+        <MicIcon width={20} height={20} />
+        {t("tuner.tapToListen")}
+      </button>
+    );
+  } else if (MIC_ERRORS[mic]) {
+    const canRetry = mic === "denied" || mic === "nomic" || mic === "error";
+    content = (
+      <div className="flex h-full items-center gap-3">
+        <p role="alert" className="line-clamp-2 flex-1 text-xs text-error">
+          {t(MIC_ERRORS[mic]!)}
+        </p>
+        {canRetry && (
+          <button
+            type="button"
+            className="btn h-11 min-h-11 shrink-0 rounded-full btn-outline btn-primary"
+            onClick={() => tunerEngine.setEnabled(true)}
+          >
+            {t("mic.retry")}
+          </button>
+        )}
       </div>
     );
   }
 
-  const error = MIC_ERRORS[mic];
-  const canRetry = mic === "denied" || mic === "nomic" || mic === "error";
+  return <div className="flex h-12 flex-col justify-center px-6">{content}</div>;
+}
+
+/** Manual microphone on/off; the ring grows with the input level while listening. */
+function MicToggle() {
+  const t = useT();
+  const { mic, level } = useTuner();
+  const on = mic !== "off";
+  const listening = mic === "running";
+  const ring = listening ? Math.min(10, 2 + level * 600) : 0;
+
   return (
-    <div className="flex items-center gap-3 px-6">
-      <p role="alert" className="flex-1 text-sm text-error">
-        {error && t(error)}
-      </p>
-      {canRetry && (
-        <button
-          type="button"
-          className="btn min-h-11 shrink-0 rounded-full btn-outline btn-primary"
-          onClick={() => void tunerEngine.start()}
-        >
-          {t("mic.retry")}
-        </button>
-      )}
-    </div>
+    <button
+      type="button"
+      aria-pressed={on}
+      aria-label={t(on ? "mic.off" : "mic.on")}
+      title={t(on ? "mic.off" : "mic.on")}
+      onClick={() => tunerEngine.setEnabled(!on)}
+      className={`flex size-12 shrink-0 items-center justify-center rounded-full transition-[background-color,box-shadow] duration-150 ${
+        on
+          ? "bg-primary text-primary-content"
+          : "bg-base-200 text-base-content/75 hover:bg-base-300"
+      }`}
+      style={{
+        boxShadow: ring
+          ? `0 0 0 ${ring}px color-mix(in oklab, var(--color-primary) 22%, transparent)`
+          : undefined,
+      }}
+    >
+      {on ? <MicIcon width={22} height={22} /> : <MicOffIcon width={22} height={22} />}
+    </button>
   );
 }
 
@@ -204,7 +240,7 @@ function DemoPanel() {
   }, [sweep, setCents]);
 
   return (
-    <div className="mx-6 flex items-center gap-3 rounded-2xl bg-base-200 px-3 py-2">
+    <div className="flex h-12 items-center gap-3 rounded-2xl bg-base-200 px-3">
       <span className="badge shrink-0 font-semibold badge-secondary">{t("tuner.demo")}</span>
       <input
         type="range"

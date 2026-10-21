@@ -4,8 +4,8 @@
   "private": true,
   "scripts": {
     "worklet": "node scripts/build-worklet.mjs",
-    "dev": "node scripts/build-worklet.mjs && next dev",
-    "build": "node scripts/build-worklet.mjs && next build",
+    "dev": "next dev",
+    "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",

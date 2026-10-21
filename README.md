@@ -5,8 +5,9 @@ browser: no backend, no account; preferences live in `localStorage`. UI in Frenc
 
 - **Tuner** (`/`) — starts listening on its own; live pitch detection (AudioWorklet + McLeod
   Pitch Method) with median + adaptive EMA smoothing, auto/manual string mode, 11 preset
-  tunings + custom tunings, adjustable A4 (415–466 Hz), jazz-box headstock with three
-  fingerboard skins, in-tune haptics, Karplus-Strong reference tones, screen wake lock.
+  tunings + custom tunings, adjustable A4 (415–466 Hz), four unbranded headstock models (jazz,
+  open book, 6-in-line, acoustic) zoomed on the nut, three fingerboard skins, a mic on/off
+  toggle with input level ring, in-tune haptics, Karplus-Strong reference tones, screen wake lock.
 - **Chords** (`/chords`) — 204 chords (12 roots × 17 qualities, 724 voicings), SVG diagrams,
   voicing carousel, strum playback, favorites.
 - **Finder** (`/finder`) — tap a 12-fret board, get the chord name with alternatives and
@@ -26,16 +27,16 @@ Requires Node 20+ and pnpm 10.
 
 ```bash
 pnpm install
-pnpm dev          # http://localhost:3000 (builds the audio worklet first)
+pnpm dev          # http://localhost:3000
 ```
 
 | Script               | What it does                                                          |
 | -------------------- | --------------------------------------------------------------------- |
-| `pnpm dev` / `build` | Bundle `public/worklets/pitch-processor.js`, then run Next            |
+| `pnpm dev` / `build` | Run Next (`next.config.ts` bundles the audio worklet on every start)  |
 | `pnpm start`         | Serve the production build                                            |
 | `pnpm check`         | Lint + type-check + unit tests                                        |
 | `pnpm test`          | Vitest: note/cents math, pitch detection on synthetic signals, chords |
-| `pnpm test:e2e`      | Playwright smoke tests (needs `pnpm build`; starts `pnpm start`)      |
+| `pnpm test:e2e`      | Playwright tests (needs `pnpm build`; serves it on port 3100)         |
 | `pnpm chords`        | Regenerate `src/lib/music/chords.json` from the shape templates       |
 | `pnpm icons`         | Regenerate icons + splash logo from `new.png` (the source logo)       |
 | `pnpm format`        | Prettier                                                              |
@@ -70,10 +71,13 @@ scripts/               worklet bundler, chord generator, icon generator
 ```
 
 The detection pipeline is pure TypeScript shared by the worklet and the tests: all input
-channels summed (stereo interfaces) → band-pass (60 Hz–1 kHz) → MPM on 4096-sample windows
-every 1024 samples → clarity/level gate → 7-frame median → lock after 3 agreeing frames
-(±20 cents) → adaptive EMA in cents (heavy while steady, quicker while retuning) → hold
-through short dropouts. The UI adds in-tune hysteresis (enter ≤ 3 cents, leave > 5 cents) and
+channels summed (stereo interfaces) → high-pass 50 Hz, 50/60 Hz hum notches, low-pass 1 kHz →
+level gate relative to an adaptive noise floor (works down to ~−80 dBFS desktop mics) →
+McLeod Pitch Method restricted to 55 Hz–1.2 kHz (so strings ringing along can't produce a
+"common period" far below the played note) on 4096-sample windows every 1024 samples →
+outliers ignored unless 3 frames confirm a jump → 7-frame median → adaptive EMA in cents →
+hold through short dropouts. `tests/scenarios.test.ts` covers a quiet desktop mic with hum
+and a phone hearing other open strings ring along. The UI adds in-tune hysteresis (enter ≤ 3 cents, leave > 5 cents) and
 eases the bubble on screen.
 
 ## Deploy to Vercel

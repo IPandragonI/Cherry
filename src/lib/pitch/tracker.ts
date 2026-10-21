@@ -11,7 +11,10 @@ export interface RawPitch {
 export interface TrackerOptions {
   minFrequency: number;
   maxFrequency: number;
+  /** Clarity needed to lock onto a note. */
   minClarity: number;
+  /** Lower clarity accepted once locked, so the decaying tail of a note keeps reading. */
+  sustainClarity: number;
   minRms: number;
   /** Median window length (frames). */
   medianSize: number;
@@ -19,8 +22,10 @@ export interface TrackerOptions {
   lockFrames: number;
   /** Max spread (cents) between recent frames for them to "agree". */
   lockToleranceCents: number;
-  /** A jump bigger than this (cents) is a new note: history restarts. */
+  /** A frame further than this (cents) from the current pitch is an outlier… */
   jumpCents: number;
+  /** …unless this many consecutive outliers agree with each other: then it's a new note. */
+  confirmFrames: number;
   /** Invalid frames tolerated before the signal is declared lost. */
   holdFrames: number;
   /** EMA weight of a new frame while the pitch is steady (heavier smoothing). */
@@ -34,12 +39,14 @@ export interface TrackerOptions {
 export const DEFAULT_TRACKER_OPTIONS: TrackerOptions = {
   minFrequency: 55,
   maxFrequency: 1200,
-  minClarity: 0.9,
-  minRms: 0.004,
+  minClarity: 0.7,
+  sustainClarity: 0.55,
+  minRms: 0.0001,
   medianSize: 7,
   lockFrames: 3,
   lockToleranceCents: 20,
-  jumpCents: 60,
+  jumpCents: 35,
+  confirmFrames: 3,
   holdFrames: 8,
   steadyAlpha: 0.08,
   movingAlpha: 0.5,
@@ -54,15 +61,18 @@ export function median(values: readonly number[]): number {
 
 /**
  * Turns noisy per-frame pitch estimates into a steady reading: rejects unclear or quiet
- * frames, waits for a few agreeing frames before locking on (stability gate), removes
- * outliers with a running median, then applies an adaptive exponential moving average in
- * the log (cents) domain, and holds the last value briefly through dropouts.
+ * frames, waits for a few agreeing frames before locking on (stability gate), ignores
+ * isolated outliers (a big jump only counts once several frames confirm it), smooths with
+ * a running median and an adaptive exponential moving average in the log (cents) domain,
+ * and holds the last value briefly through dropouts.
  */
 export class PitchTracker {
   private readonly options: TrackerOptions;
   private history: number[] = [];
   private invalidFrames = 0;
   private locked = false;
+  /** Consecutive frames far from the current pitch, waiting to be confirmed as a new note. */
+  private candidates: number[] = [];
   /** Smoothed pitch as log2(frequency), null until locked. */
   private smoothed: number | null = null;
 
@@ -75,7 +85,7 @@ export class PitchTracker {
     const o = this.options;
     const valid =
       raw !== null &&
-      raw.clarity >= o.minClarity &&
+      raw.clarity >= (this.locked ? o.sustainClarity : o.minClarity) &&
       raw.rms >= o.minRms &&
       raw.frequency >= o.minFrequency &&
       raw.frequency <= o.maxFrequency;
@@ -89,8 +99,24 @@ export class PitchTracker {
 
     if (this.history.length > 0) {
       const current = median(this.history);
-      if (Math.abs(centsBetween(raw.frequency, current)) > o.jumpCents) this.reset();
+      if (Math.abs(centsBetween(raw.frequency, current)) > o.jumpCents) {
+        const candidates = [...this.candidates, raw.frequency];
+        const center = median(candidates);
+        const agree = candidates.every(
+          (f) => Math.abs(centsBetween(f, center)) <= o.lockToleranceCents,
+        );
+        this.candidates = agree ? candidates : [raw.frequency];
+        if (this.candidates.length < o.confirmFrames) return this.output();
+        // Confirmed: a new note (or a big retune). Restart from the agreeing frames.
+        const confirmed = this.candidates;
+        this.reset();
+        this.history = confirmed;
+        this.locked = true;
+        this.smoothed = Math.log2(median(confirmed));
+        return this.output();
+      }
     }
+    this.candidates = [];
     this.history.push(raw.frequency);
     if (this.history.length > o.medianSize) this.history.shift();
 
@@ -121,6 +147,7 @@ export class PitchTracker {
     this.invalidFrames = 0;
     this.locked = false;
     this.smoothed = null;
+    this.candidates = [];
   }
 
   private output(): number | null {

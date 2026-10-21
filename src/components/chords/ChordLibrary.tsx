@@ -128,6 +128,10 @@ function ChordCard({ root, quality }: { root: string; quality: string }) {
   const chord = findChord(root, quality);
   const { chordIds, toggleChord } = useFavorites();
   const scroller = useRef<HTMLDivElement>(null);
+  /** Voicing a programmatic (smooth) scroll is heading to; scroll events are ignored
+   *  until it arrives, so the position, frets and thumbnail don't flash through the
+   *  voicings in between. */
+  const scrollTarget = useRef<number | null>(null);
   const [index, setIndex] = useState(0);
   if (!chord) return null;
 
@@ -140,6 +144,8 @@ function ChordCard({ root, quality }: { root: string; quality: string }) {
     const el = scroller.current;
     if (!el) return;
     const next = Math.max(0, Math.min(total - 1, i));
+    if (next === index) return;
+    scrollTarget.current = next;
     el.scrollTo({
       left: next * el.clientWidth,
       behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
@@ -192,8 +198,16 @@ function ChordCard({ root, quality }: { root: string; quality: string }) {
           className="flex min-w-0 flex-1 snap-x snap-mandatory [scrollbar-width:none] overflow-x-auto"
           onScroll={(e) => {
             const el = e.currentTarget;
-            setIndex(Math.round(el.scrollLeft / el.clientWidth));
+            const visible = Math.round(el.scrollLeft / el.clientWidth);
+            if (scrollTarget.current !== null) {
+              if (visible !== scrollTarget.current) return;
+              scrollTarget.current = null;
+            }
+            if (visible !== index) setIndex(visible);
           }}
+          // The user taking over (swipe, wheel) cancels the programmatic target.
+          onPointerDown={() => (scrollTarget.current = null)}
+          onWheel={() => (scrollTarget.current = null)}
           aria-roledescription="carousel"
         >
           {chord.voicings.map((v, i) => (
@@ -228,7 +242,12 @@ function ChordCard({ root, quality }: { root: string; quality: string }) {
         <p className="text-sm font-medium text-base-content/75">
           {t("chords.voicing", { n: Math.min(index, total - 1) + 1, total })}
         </p>
-        <FingeringTable frets={current.frets} fingers={current.fingers} />
+        <p
+          className="mt-1 font-mono text-xl font-semibold tracking-[0.3em]"
+          aria-label={`${t("chords.fingering")} : ${fretsLabel(current.frets)}`}
+        >
+          {fretsLabel(current.frets)}
+        </p>
       </div>
 
       {total > 1 && (
@@ -256,52 +275,6 @@ function ChordCard({ root, quality }: { root: string; quality: string }) {
         </div>
       )}
     </article>
-  );
-}
-
-const STRING_NAMES = ["E", "A", "D", "G", "B", "e"];
-
-/** Per-string fret and finger notation, aligned under the diagram. */
-function FingeringTable({ frets, fingers }: { frets: Fret[]; fingers: (number | null)[] }) {
-  const t = useT();
-  return (
-    <table className="mx-auto mt-1.5 text-center tabular-nums">
-      <caption className="sr-only">{t("chords.fingering")}</caption>
-      <tbody>
-        <tr className="text-xs text-base-content/75">
-          <th scope="row" className="pr-3 text-left font-medium">
-            {t("chords.strings")}
-          </th>
-          {STRING_NAMES.map((n) => (
-            <td key={n} className="w-8">
-              {n}
-            </td>
-          ))}
-        </tr>
-        <tr className="font-mono text-lg font-semibold">
-          <th
-            scope="row"
-            className="pr-3 text-left font-sans text-xs font-medium text-base-content/75"
-          >
-            {t("chords.frets")}
-          </th>
-          {frets.map((f, i) => (
-            <td key={i}>{f === null ? "x" : f}</td>
-          ))}
-        </tr>
-        <tr className="font-mono text-sm text-primary">
-          <th
-            scope="row"
-            className="pr-3 text-left font-sans text-xs font-medium text-base-content/75"
-          >
-            {t("chords.fingers")}
-          </th>
-          {fingers.map((f, i) => (
-            <td key={i}>{f ?? "–"}</td>
-          ))}
-        </tr>
-      </tbody>
-    </table>
   );
 }
 

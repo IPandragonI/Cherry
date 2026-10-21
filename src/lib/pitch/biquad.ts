@@ -27,6 +27,13 @@ export class Biquad {
     return new Biquad(b0, 2 * b0, b0, (-2 * cos) / a0, (1 - alpha) / a0);
   }
 
+  /** Narrow band-reject, e.g. to remove 50/60 Hz mains hum picked up by desktop mics. */
+  static notch(sampleRate: number, center: number, q = 8): Biquad {
+    const { cos, alpha } = prewarp(sampleRate, center, q);
+    const a0 = 1 + alpha;
+    return new Biquad(1 / a0, (-2 * cos) / a0, 1 / a0, (-2 * cos) / a0, (1 - alpha) / a0);
+  }
+
   process(x: number): number {
     const y =
       this.b0 * x + this.b1 * this.x1 + this.b2 * this.x2 - this.a1 * this.y1 - this.a2 * this.y2;

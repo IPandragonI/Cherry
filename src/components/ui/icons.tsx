@@ -151,3 +151,11 @@ export const SharpIcon = (p: IconProps) => (
     <path d="M6 10.2 18 7.8M6 16.2l12-2.4" strokeWidth={2.6} />
   </Icon>
 );
+
+export const MicOffIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M15 9.5V6.5a3 3 0 0 0-5.6-1.5M9 9v2.5a3 3 0 0 0 4.6 2.5" />
+    <path d="M5.5 11.5a6.5 6.5 0 0 0 10.4 5.2M18.5 11.5c0 .9-.2 1.8-.5 2.6M12 18v2.5" />
+    <path d="m4 4 16 16" />
+  </Icon>
+);

@@ -5,7 +5,8 @@ import { FAKE_MIC_WAV } from "./e2e/fake-mic";
 export default defineConfig({
   testDir: "e2e",
   globalSetup: "./e2e/global-setup.ts",
-  use: { baseURL: "http://localhost:3000" },
+  // Own port, so a `next dev` left running on :3000 is never reused by mistake.
+  use: { baseURL: "http://localhost:3100" },
   projects: [
     {
       name: "mobile",
@@ -34,8 +35,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "pnpm start",
-    url: "http://localhost:3000",
+    command: "pnpm start -p 3100",
+    url: "http://localhost:3100",
     reuseExistingServer: true,
   },
 });

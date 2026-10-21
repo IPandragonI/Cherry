@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import type { HeadstockId } from "@/components/tuner/headstocks";
 import { DEFAULT_A4, MAX_A4, MIN_A4 } from "@/lib/music/notes";
 
 export type ThemePref = "system" | "light" | "dark";
@@ -17,6 +18,7 @@ export interface Settings {
   locale: LocalePref;
   a4: number;
   skin: NeckSkin;
+  headstock: HeadstockId;
   tuningId: string;
   mode: TunerMode;
   /** String index (0 = lowest) used in manual mode and by the demo. */
@@ -38,6 +40,7 @@ export const DEFAULT_SETTINGS: Settings = {
   locale: "auto",
   a4: DEFAULT_A4,
   skin: "maple",
+  headstock: "jazz",
   tuningId: "standard",
   mode: "auto",
   selectedString: 0,
@@ -64,6 +67,7 @@ export const useSettings = create<Settings & SettingsActions>()(
         locale: s.locale,
         a4: s.a4,
         skin: s.skin,
+        headstock: s.headstock,
         tuningId: s.tuningId,
         mode: s.mode,
         selectedString: s.selectedString,

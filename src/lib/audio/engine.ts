@@ -2,6 +2,8 @@ import type { PitchReading } from "../pitch/analyzer";
 
 export type MicStatus =
   | "idle"
+  /** Turned off by the user (mic toggle); stays off until turned back on. */
+  | "off"
   | "starting"
   | "running"
   /** Microphone granted, but the browser keeps audio paused until the user taps. */
@@ -66,6 +68,8 @@ class TunerEngine {
   private wakeLock: WakeLockSentinel | null = null;
   private suppressedUntil = 0;
   private session = 0;
+  /** Set by the mic toggle; survives tab changes for the rest of the session. */
+  private userDisabled = false;
 
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -86,6 +90,7 @@ class TunerEngine {
   }
 
   async start(): Promise<void> {
+    if (this.userDisabled) return this.setSnapshot({ ...IDLE, status: "off" });
     const { status } = this.snapshot;
     if (status === "starting" || status === "running" || status === "suspended") return;
     if (!window.isSecureContext) return this.setSnapshot({ status: "insecure" });
@@ -144,7 +149,18 @@ class TunerEngine {
   stop(): void {
     this.session++;
     this.release();
-    this.setSnapshot(IDLE);
+    this.setSnapshot(this.userDisabled ? { ...IDLE, status: "off" } : IDLE);
+  }
+
+  /** The user's mic toggle. Turning on from a click also satisfies autoplay policies. */
+  setEnabled(enabled: boolean): void {
+    this.userDisabled = !enabled;
+    if (enabled) {
+      if (this.ctx?.state === "suspended") void this.ctx.resume();
+      void this.start();
+    } else {
+      this.stop();
+    }
   }
 
   /** Resumes audio that the browser kept suspended; call from a user gesture. */
