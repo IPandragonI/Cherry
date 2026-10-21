@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Fraunces, Instrument_Sans } from "next/font/google";
 import { SerwistProvider } from "@serwist/turbopack/react";
-import { Splash } from "@/components/Splash";
 import { StoreHydration } from "@/components/StoreHydration";
 import { ThemeSync } from "@/components/ThemeSync";
 import { SETTINGS_STORAGE_KEY } from "@/store/settings";
@@ -63,7 +62,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: preHydrationScript }} />
       </head>
       <body className="min-h-dvh font-sans">
-        <Splash />
         <StoreHydration />
         <ThemeSync light={LIGHT_THEME_COLOR} dark={DARK_THEME_COLOR} />
         <SerwistProvider
@@ -71,7 +69,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           disable={process.env.NODE_ENV === "development"}
           reloadOnOnline={false}
         >
-          {children}
+          {/* Fades in once at startup (this layout persists across tab changes). */}
+          <div className="app-enter">{children}</div>
         </SerwistProvider>
       </body>
     </html>

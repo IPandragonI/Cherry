@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { PlayIcon } from "@/components/ui/icons";
-import { metronome, tapTempo, tempoMarking } from "@/lib/audio/metronome";
+import { METRONOME_SOUNDS, metronome, tapTempo, tempoMarking } from "@/lib/audio/metronome";
 import { useT } from "@/lib/i18n/useT";
 import { MAX_BPM, MIN_BPM, useSettings } from "@/store/settings";
 
@@ -12,13 +12,14 @@ export function MetronomeScreen() {
   const t = useT();
   const bpm = useSettings((s) => s.bpm);
   const beatsPerBar = useSettings((s) => s.beatsPerBar);
+  const sound = useSettings((s) => s.metronomeSound);
   const setBpm = useSettings((s) => s.setBpm);
   const set = useSettings((s) => s.set);
   const playing = metronome.store((s) => s.playing);
   const beat = metronome.store((s) => s.beat);
   const taps = useRef<number[]>([]);
 
-  useEffect(() => metronome.configure(bpm, beatsPerBar), [bpm, beatsPerBar]);
+  useEffect(() => metronome.configure(bpm, beatsPerBar, sound), [bpm, beatsPerBar, sound]);
   // Silence when leaving the tab.
   useEffect(() => () => metronome.stop(), []);
 
@@ -104,6 +105,31 @@ export function MetronomeScreen() {
               }`}
             >
               {n}/4
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <p id="sound-label" className="mb-2 text-sm font-medium text-base-content/75">
+          {t("metronome.sound")}
+        </p>
+        <div role="radiogroup" aria-labelledby="sound-label" className="grid grid-cols-2 gap-2">
+          {METRONOME_SOUNDS.map((id) => (
+            <button
+              key={id}
+              type="button"
+              role="radio"
+              aria-checked={sound === id}
+              onClick={() => {
+                set({ metronomeSound: id });
+                if (!playing) metronome.preview(id);
+              }}
+              className={`min-h-12 rounded-full text-sm font-semibold transition-colors ${
+                sound === id ? "bg-primary text-primary-content" : "bg-base-200 hover:bg-base-300"
+              }`}
+            >
+              {t(`metronome.sound.${id}`)}
             </button>
           ))}
         </div>

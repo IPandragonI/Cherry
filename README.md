@@ -42,7 +42,7 @@ pnpm dev          # http://localhost:3000
 | `pnpm test`          | Vitest: note/cents math, pitch detection on synthetic signals, chords |
 | `pnpm test:e2e`      | Playwright tests (needs `pnpm build`; serves it on port 3100)         |
 | `pnpm chords`        | Regenerate `src/lib/music/chords.json` from the shape templates       |
-| `pnpm icons`         | Regenerate icons + splash logo from `new.png` (the source logo)       |
+| `pnpm icons`         | Regenerate the icons and logo from `new.png` (the source logo)        |
 | `pnpm format`        | Prettier                                                              |
 
 First Playwright run: `pnpm exec playwright install chromium`. The `desktop-mic` project
@@ -74,15 +74,27 @@ e2e/                   Playwright smoke tests
 scripts/               worklet bundler, chord generator, icon generator
 ```
 
-The detection pipeline is pure TypeScript shared by the worklet and the tests: all input
-channels summed (stereo interfaces) → high-pass 50 Hz, 50/60 Hz hum notches, low-pass 1 kHz →
-level gate relative to an adaptive noise floor (works down to ~−80 dBFS desktop mics) →
-McLeod Pitch Method restricted to 55 Hz–1.2 kHz (so strings ringing along can't produce a
-"common period" far below the played note) on 4096-sample windows every 1024 samples →
-outliers ignored unless 3 frames confirm a jump → 7-frame median → adaptive EMA in cents →
-hold through short dropouts. `tests/scenarios.test.ts` covers a quiet desktop mic with hum
-and a phone hearing other open strings ring along. The UI adds in-tune hysteresis (enter ≤ 3 cents, leave > 5 cents) and
-eases the bubble on screen.
+Audio runs on three threads: the AudioWorklet only mixes the input channels and forwards
+samples; a Web Worker (`src/lib/audio/pitch-worker.ts`) runs the analysis; the page only
+draws. The analysis is pure TypeScript shared by the worker and the tests:
+
+1. High-pass 50 Hz, 50/60 Hz hum notches, low-pass 1 kHz; level gate relative to an
+   adaptive noise floor (works down to ~−80 dBFS desktop mics); ~85 ms skipped after each
+   pluck.
+2. **Which note:** McLeod Pitch Method restricted to 55 Hz–1.2 kHz (4096-sample windows,
+   every 1024 samples).
+3. **Exact frequency:** each of the first harmonics is measured in an 8192-point spectrum
+   from its phase advance over up to 170 ms (phase vocoder); harmonics that disagree are
+   dropped; a stiffness fit removes the sharpness of upper partials (anchored on the
+   fundamental and 2nd harmonic). Nothing is shown when no harmonic consensus confirms
+   the pitch.
+4. Tracker: outliers ignored unless 3 frames confirm a jump, 7-frame median, adaptive EMA.
+
+The UI adds in-tune hysteresis (enter ≤ 3 cents, leave > 5 cents). Accuracy tests:
+`tests/calibration.test.ts`, `tests/accuracy.test.ts`, `tests/acoustic.test.ts` (an
+in-tune acoustic guitar on all six strings), `tests/scenarios.test.ts`. Real recordings
+saved with **Settings → Diagnostic audio → Record** can be dropped in `tests/recordings/`
+(named after the note, e.g. `E2.wav`) and are replayed by `tests/recordings.test.ts`.
 
 ## Deploy to Vercel
 

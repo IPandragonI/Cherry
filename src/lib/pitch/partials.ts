@@ -31,6 +31,9 @@ export interface RefinerOptions {
   outlierCents: number;
 }
 
+/** How far the stiffness fit may land from the low-partial estimate. */
+const MAX_STIFFNESS_CENTS = 3;
+
 const DEFAULTS: RefinerOptions = {
   maxHarmonic: 6,
   maxFrequency: 1600,
@@ -172,11 +175,21 @@ export class PartialRefiner {
     if (total === 0) return { frequency: consensus, support: 1, agreement: 0 };
     const support = kept.length;
     const agreement = support / partials.length;
+    // Estimate dominated by the fundamental and 2nd partial: barely touched by string
+    // stiffness (upper partials of a real string run sharp), so it anchors the result.
+    const low = logMean(
+      kept.map((p) => ({ f0: p.f0, w: (p.partial.snr / p.partial.harmonic) ** 2 })),
+    );
+    // The stiffness fit uses every partial for precision and removes their sharpness. If
+    // it strays from the low-partial estimate, it is amplifying noise (e.g. a body resonance
+    // nudging one partial) and the low-partial estimate is used instead.
+    const near = (f: number) => Math.abs(1200 * Math.log2(f / low)) <= MAX_STIFFNESS_CENTS;
     const stiffness = fitStiffness(kept.map((k) => k.partial));
-    if (stiffness) return { frequency: stiffness, support, agreement };
-    // Average in the log domain (cents), then back to Hz.
-    const logMean = kept.reduce((s, p) => s + p.w * Math.log2(p.f0), 0) / total;
-    return { frequency: 2 ** logMean, support, agreement };
+    if (stiffness && near(stiffness)) return { frequency: stiffness, support, agreement };
+    // No usable fit: the most precise average (all partials, inverse-variance weights),
+    // as long as it agrees with the anchor too.
+    const precise = logMean(kept);
+    return { frequency: near(precise) ? precise : low, support, agreement };
   }
 
   /** Median magnitude of the bins around a peak (excluding the peak's main lobe). */
@@ -251,6 +264,12 @@ function fitStiffness(partials: PartialEstimate[]): number | null {
   // Real guitar strings: B is roughly 1e-5…1e-3. Anything else is noise, not physics.
   if (!(stiffness >= 0 && stiffness < 2e-3)) return null;
   return Math.sqrt(f0Squared) * Math.sqrt(1 + stiffness);
+}
+
+/** Weighted mean in the log domain (cents), back in Hz. */
+function logMean(items: { f0: number; w: number }[]): number {
+  const total = items.reduce((s, p) => s + p.w, 0);
+  return 2 ** (items.reduce((s, p) => s + p.w * Math.log2(p.f0), 0) / total);
 }
 
 function weightedMedian(items: { f0: number; w: number }[]): number {

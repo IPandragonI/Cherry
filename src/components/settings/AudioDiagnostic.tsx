@@ -6,6 +6,8 @@ import { useNumberFormat, useT } from "@/lib/i18n/useT";
 import { DEFAULT_A4, displayNote, nearestNote } from "@/lib/music/notes";
 import { useSettings } from "@/store/settings";
 
+const RECORD_SECONDS = 6;
+
 function formatCents(cents: number) {
   const r = Math.round(cents * 10) / 10;
   return `${r > 0 ? "+" : r < 0 ? "−" : ""}${Math.abs(r).toFixed(1)}`;
@@ -21,6 +23,7 @@ export function AudioDiagnostic() {
   const a4 = useSettings((s) => s.a4);
   const hz = useNumberFormat(2);
   const [open, setOpen] = useState(false);
+  const [recording, setRecording] = useState(false);
   const engine = useSyncExternalStore(
     tunerEngine.subscribe,
     tunerEngine.getSnapshot,
@@ -90,6 +93,28 @@ export function AudioDiagnostic() {
               style={{ width: `${Math.min(100, level * 2000)}%` }}
             />
           </div>
+
+          <button
+            type="button"
+            className="btn min-h-11 w-full rounded-full btn-outline btn-primary"
+            disabled={status !== "running" || recording}
+            onClick={() => {
+              setRecording(true);
+              tunerEngine
+                .record(RECORD_SECONDS)
+                .then((wav) => {
+                  const link = document.createElement("a");
+                  link.href = URL.createObjectURL(wav);
+                  link.download = `cherry-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.wav`;
+                  link.click();
+                  setTimeout(() => URL.revokeObjectURL(link.href), 10_000);
+                })
+                .catch(() => {})
+                .finally(() => setRecording(false));
+            }}
+          >
+            {t(recording ? "diag.recording" : "diag.record", { s: RECORD_SECONDS })}
+          </button>
 
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
             {rows.map(([k, v]) => (

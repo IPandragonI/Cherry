@@ -1,3 +1,4 @@
+import { unlockPlayback } from "./audioSession";
 import { karplusStrong } from "./karplus";
 
 let ctx: AudioContext | null = null;
@@ -29,6 +30,7 @@ export const PLUCK_DURATION_MS = 2500;
  */
 export function playNotes(frequencies: number[], { strumMs = 0, gain = 0.6 } = {}): void {
   const audio = context();
+  unlockPlayback(audio);
   const out = audio.createGain();
   out.gain.value = gain / Math.sqrt(Math.max(1, frequencies.length));
   out.connect(audio.destination);

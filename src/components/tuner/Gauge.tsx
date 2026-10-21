@@ -42,7 +42,7 @@ interface TrailPoint {
  * The marker glides left (flat) / right (sharp) over a dot-matrix field scrolling
  * downwards. While a note is heard it leaves a trail in the field that flows down with the
  * dots, like a pen on a moving chart; the trail fades once the sound stops. In tune, the
- * trail and the dots freeze and the centre line turns to the primary colour.
+ * trail stops (the field keeps scrolling) and the centre line turns to the primary colour.
  * Everything moving is drawn outside React (rAF + canvas + `transform`).
  */
 export function Gauge({ cents, inTune }: GaugeProps) {
@@ -52,12 +52,12 @@ export function Gauge({ cents, inTune }: GaugeProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const targetRef = useRef(0);
   const activeRef = useRef(false);
-  const frozenRef = useRef(false);
+  const inTuneRef = useRef(false);
 
   useEffect(() => {
     targetRef.current = cents === null ? 0 : clampCents(cents);
     activeRef.current = cents !== null;
-    frozenRef.current = inTune;
+    inTuneRef.current = inTune;
   }, [cents, inTune]);
 
   useEffect(() => {
@@ -104,15 +104,15 @@ export function Gauge({ cents, inTune }: GaugeProps) {
         color = getComputedStyle(field).getPropertyValue("--color-primary").trim() || "#a8384c";
       }
 
-      const frozen = frozenRef.current;
-      if (!frozen && !reduced.matches) {
+      if (!reduced.matches) {
+        // The field never stops; the trail rides on it.
         const fall = dt * SCROLL_PX_PER_MS;
         for (const p of trail) p.y += fall;
-        // Emitted just under the marker's head, then carried down by the moving field.
-        if (activeRef.current) trail.push({ x, y: height / 2 + MARKER_W / 2 - 4, born: now });
-      } else if (frozen) {
-        // Freeze the fade too, so the trail stays exactly as it was when in tune.
-        for (const p of trail) p.born += dt;
+        // Emitted just under the marker's head while a note is heard, but not once it is in
+        // tune: the trail then stops and what is left flows away and fades.
+        if (activeRef.current && !inTuneRef.current) {
+          trail.push({ x, y: height / 2 + MARKER_W / 2 - 4, born: now });
+        }
       }
       while (trail.length && (trail[0].y > height + 4 || now - trail[0].born > TRAIL_FADE_MS)) {
         trail.shift();
@@ -167,7 +167,7 @@ export function Gauge({ cents, inTune }: GaugeProps) {
           : t("tuner.noSignal")
       }
     >
-      <div className="dot-field" data-frozen={inTune} aria-hidden="true">
+      <div className="dot-field" aria-hidden="true">
         <div className="dot-field-dots" />
       </div>
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" aria-hidden="true" />

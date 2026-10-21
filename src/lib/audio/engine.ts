@@ -1,4 +1,6 @@
 import type { PitchReading } from "../pitch/analyzer";
+import type { WorkerCommand, WorkerEvent } from "./pitch-worker";
+import { setRecording } from "./audioSession";
 
 export type MicStatus =
   | "idle"
@@ -70,6 +72,27 @@ function tryResume(ctx: AudioContext): Promise<void> {
 
 const pageVisible = () => document.visibilityState === "visible";
 
+/** 16-bit PCM mono WAV. */
+function encodeWav(samples: Float32Array, sampleRate: number): Blob {
+  const view = new DataView(new ArrayBuffer(44 + samples.length * 2));
+  const text = (offset: number, s: string) =>
+    [...s].forEach((c, i) => view.setUint8(offset + i, c.charCodeAt(0)));
+  text(0, "RIFF");
+  view.setUint32(4, 36 + samples.length * 2, true);
+  text(8, "WAVEfmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  text(36, "data");
+  view.setUint32(40, samples.length * 2, true);
+  samples.forEach((v, i) => view.setInt16(44 + i * 2, Math.max(-1, Math.min(1, v)) * 0x7fff, true));
+  return new Blob([view], { type: "audio/wav" });
+}
+
 /**
  * Microphone → AudioWorklet pitch pipeline, exposed as an external store
  * (`useSyncExternalStore`).
@@ -87,6 +110,7 @@ class TunerEngine {
   private ctx: AudioContext | null = null;
   private stream: MediaStream | null = null;
   private worker: Worker | null = null;
+  private onRecording: ((samples: Float32Array, sampleRate: number) => void) | null = null;
   private wakeLock: WakeLockSentinel | null = null;
   private watchdog: ReturnType<typeof setInterval> | null = null;
   private lastMessageAt = 0;
@@ -159,6 +183,25 @@ class TunerEngine {
     else void this.start();
   }
 
+  /**
+   * Captures the raw microphone input (what the analysis hears) for the diagnostic, so a
+   * real-world problem can be replayed exactly. Resolves with a 16-bit mono WAV.
+   */
+  record(seconds: number): Promise<Blob> {
+    const worker = this.worker;
+    if (!worker || this.snapshot.status !== "running") {
+      return Promise.reject(new Error("not listening"));
+    }
+    return new Promise((resolve) => {
+      this.onRecording = (samples, sampleRate) => {
+        this.onRecording = null;
+        resolve(encodeWav(samples, sampleRate));
+      };
+      const command: WorkerCommand = { type: "record", seconds };
+      worker.postMessage(command);
+    });
+  }
+
   /** Ignores the microphone for a while, e.g. while a reference tone is playing. */
   suppress(ms: number): void {
     this.suppressedUntil = performance.now() + ms;
@@ -182,6 +225,8 @@ class TunerEngine {
         if (session === this.session) this.setSnapshot({ status: "denied" });
         return;
       }
+      // iOS: recording needs the play-and-record audio session (reference tones still play).
+      setRecording(true);
       // No channelCount constraint: some desktop drivers reject or ignore it. The worklet
       // mixes whatever channels arrive.
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -210,9 +255,17 @@ class TunerEngine {
       const worker = new Worker(WORKER_URL);
       this.worker = worker;
       const channel = new MessageChannel();
-      worker.postMessage({ port: channel.port2, sampleRate: ctx.sampleRate }, [channel.port2]);
+      const setup: WorkerCommand = {
+        type: "setup",
+        port: channel.port2,
+        sampleRate: ctx.sampleRate,
+      };
+      worker.postMessage(setup, [channel.port2]);
       node.port.postMessage({ port: channel.port1 }, [channel.port1]);
-      worker.onmessage = (e: MessageEvent<PitchReading>) => this.onReading(e.data);
+      worker.onmessage = ({ data }: MessageEvent<WorkerEvent>) => {
+        if (data.type === "reading") this.onReading(data);
+        else this.onRecording?.(data.samples, data.sampleRate);
+      };
 
       const track = stream.getAudioTracks()[0];
       // Mobile OSes end the capture when the app is backgrounded or interrupted (phone
@@ -255,6 +308,7 @@ class TunerEngine {
     if (this.watchdog) clearInterval(this.watchdog);
     this.watchdog = null;
     GESTURES.forEach((g) => document.removeEventListener(g, this.onGesture, true));
+    if (this.stream) setRecording(false);
     this.stream?.getTracks().forEach((t) => t.stop());
     this.stream = null;
     this.worker?.terminate();

@@ -1,3 +1,4 @@
+import { statSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 
 test("desktop: listens automatically and hears a guitar on the right input channel", async ({
@@ -109,4 +110,22 @@ test("a non-standard reference pitch is flagged and shifts the reading", async (
   await expect(page.getByRole("meter")).toHaveAttribute("aria-valuetext", /−7 cents/, {
     timeout: 10_000,
   });
+});
+
+test("the diagnostic records the raw input as a WAV file", async ({ page }) => {
+  await page.addInitScript(() =>
+    localStorage.setItem(
+      "cherry-settings",
+      JSON.stringify({ state: { locale: "fr" }, version: 2 }),
+    ),
+  );
+  await page.goto("/settings");
+  await page.getByRole("button", { name: "Tester" }).click();
+  await expect(page.getByText("à l'écoute")).toBeVisible({ timeout: 10_000 });
+  const download = page.waitForEvent("download", { timeout: 15_000 });
+  await page.getByRole("button", { name: /Enregistrer 6 s/ }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toMatch(/^cherry-.*\.wav$/);
+  const { size } = statSync(await file.path());
+  expect(size).toBeGreaterThan(6 * 44100 * 2); // 6 s of 16-bit audio
 });

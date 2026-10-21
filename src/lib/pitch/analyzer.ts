@@ -1,10 +1,12 @@
 import { Biquad } from "./biquad";
-import { BandedMpm } from "./mpm";
-import { PartialRefiner } from "./partials";
+import { BandedMpm, type PitchEstimate } from "./mpm";
+import { PartialRefiner, type RefinedPitch } from "./partials";
 import { DEFAULT_TRACKER_OPTIONS, PitchTracker, type TrackerOptions } from "./tracker";
 
 /** Clarity credited to a pitch that most of its partials agree on. */
 const CONSENSUS_CLARITY = 0.9;
+/** Clarity a period estimate needs to be shown without spectral confirmation. */
+const PERIOD_ONLY_CLARITY = 0.93;
 
 export interface PitchReading {
   /** Smoothed frequency in Hz, or null when no stable pitch is heard. */
@@ -123,6 +125,39 @@ export class PitchAnalyzer {
     this.tracker = new PitchTracker(tracker);
   }
 
+  /**
+   * The value shown is the spectral one. The period estimate only says which note it is:
+   * it can be off by tens of cents on an acoustic guitar (body resonances, strings ringing
+   * along), so when the two disagree the partials decide, and when nothing confirms the
+   * pitch, nothing is shown rather than a doubtful number.
+   */
+  private precise(coarse: PitchEstimate): { frequency: number; clarity: number } | null {
+    const cents = (a: number, b: number) => Math.abs(1200 * Math.log2(a / b));
+    const confirmed = (r: RefinedPitch | null) =>
+      r !== null && r.support >= 3 && r.agreement >= 0.5;
+    let refined = this.refiner.refine(coarse.frequency);
+    // Far from the period estimate: search again around the partials' own value, so every
+    // harmonic window is centred on the real pitch.
+    if (refined && cents(refined.frequency, coarse.frequency) > this.options.maxRefineCents) {
+      const again = this.refiner.refine(refined.frequency);
+      refined = confirmed(again) ? again : refined;
+    }
+    if (confirmed(refined)) {
+      // Several independent partials agreeing is stronger evidence than the waveform's
+      // periodicity, which strings ringing along keep low. (Two can line up by chance in a
+      // mixture of other strings, so three, and most of those found, are required.)
+      return {
+        frequency: refined!.frequency,
+        clarity: Math.max(coarse.clarity, CONSENSUS_CLARITY),
+      };
+    }
+    if (refined && cents(refined.frequency, coarse.frequency) <= this.options.maxRefineCents) {
+      return { frequency: refined.frequency, clarity: coarse.clarity };
+    }
+    // No spectral confirmation: only a very clean period estimate is good enough.
+    return !refined && coarse.clarity >= PERIOD_ONLY_CLARITY ? coarse : null;
+  }
+
   /** A pluck or a note change: skip the attack and restart the phase measurements. */
   private newNote() {
     this.attackLeft = this.options.attackHops;
@@ -214,28 +249,13 @@ export class PitchAnalyzer {
     // Right after a pluck the spectrum still holds the previous note: wait for it to be
     // clean (~170 ms, like hardware tuners) rather than show a less precise period value.
     if (coarse && !this.refiner.ready) coarse = null;
-    let frequency = coarse?.frequency ?? 0;
-    let clarity = coarse?.clarity ?? 0;
-    if (coarse && !outlier) {
-      // Trust the spectral value when it agrees with the period estimate; otherwise (no
-      // usable partial) fall back to the period estimate.
-      const precise = this.refiner.refine(coarse.frequency);
-      const agrees =
-        precise !== null &&
-        Math.abs(1200 * Math.log2(precise.frequency / coarse.frequency)) <=
-          this.options.maxRefineCents;
-      if (agrees) {
-        frequency = precise.frequency;
-        // Several independent partials agreeing is stronger evidence than the waveform's
-        // periodicity, which strings ringing along keep low.
-        // (Two partials can line up by chance in a mixture of other strings, so require
-        // three, and most of those found.)
-        if (precise.support >= 3 && precise.agreement >= 0.5) {
-          clarity = Math.max(clarity, CONSENSUS_CLARITY);
-        }
-      }
+    let estimate: { frequency: number; clarity: number } | null = null;
+    if (coarse && outlier) {
+      // Unconfirmed jump: hand it over as is, the tracker rejects lone outliers.
+      estimate = coarse;
+    } else if (coarse) {
+      estimate = this.precise(coarse);
     }
-    const estimate = coarse && { frequency, clarity };
     return {
       frequency: this.tracker.update(estimate ? { ...estimate, rms } : null),
       rms,

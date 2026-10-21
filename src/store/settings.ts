@@ -37,6 +37,7 @@ export interface Settings {
   bpm: number;
   /** Beats per bar (the first one is accented). */
   beatsPerBar: number;
+  metronomeSound: "click" | "beep" | "woodblock" | "rimshot";
 }
 
 interface SettingsActions {
@@ -59,10 +60,11 @@ export const DEFAULT_SETTINGS: Settings = {
   refTone: true,
   haptics: true,
   demo: false,
-  notation: "auto",
+  notation: "letters",
   leftHanded: false,
   bpm: 90,
   beatsPerBar: 4,
+  metronomeSound: "click",
 };
 
 export const useSettings = create<Settings & SettingsActions>()(
@@ -76,7 +78,16 @@ export const useSettings = create<Settings & SettingsActions>()(
     }),
     {
       name: SETTINGS_STORAGE_KEY,
-      version: 1,
+      version: 2,
+      // v2: letters became the default notation. "auto" was the old default, never an
+      // explicit choice, so it moves to letters; an explicit "solfege" is kept.
+      migrate: (persisted, version) => {
+        const state = persisted as Partial<Settings>;
+        if (version < 2 && (state.notation === undefined || state.notation === "auto")) {
+          state.notation = "letters";
+        }
+        return state as Settings & SettingsActions;
+      },
       // Rehydrated after mount by <StoreHydration /> so SSR and first render match.
       skipHydration: true,
       partialize: (s): Settings => ({
@@ -95,6 +106,7 @@ export const useSettings = create<Settings & SettingsActions>()(
         leftHanded: s.leftHanded,
         bpm: s.bpm,
         beatsPerBar: s.beatsPerBar,
+        metronomeSound: s.metronomeSound,
       }),
     },
   ),

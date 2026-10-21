@@ -122,18 +122,31 @@ function build(
 
   // 3+3: low strings on the left from the tip; high strings mirrored on the right.
   // In line: every tuner on the left, the lowest string nearest the nut.
+  // 3+3: the inner strings go to the far pegs, so no string crosses another. Left, from
+  // the tip: D, A, low E (nearest the nut); right, from the tip: G, B, high e.
+  // In line: every tuner on the bass side, the lowest string nearest the nut.
   const place = (which: "posts" | "keys") => (index: number, count: number) => {
     if (layout === "inline") {
       const line = spread([...L[which]].reverse(), count);
       return line[index];
     }
     const perSide = Math.ceil(count / 2);
-    if (index < perSide) return spread(L[which], perSide)[index];
-    const right = spread(R[which], count - perSide);
-    return right[count - 1 - index];
+    if (index < perSide) return spread(L[which], perSide)[perSide - 1 - index];
+    return spread(R[which], count - perSide)[index - perSide];
   };
+  const post = place("posts");
+  const keyAt = place("keys");
+  // 3+3 tuners stick straight out sideways (traced photos show them slightly angled).
+  const key =
+    layout === "inline"
+      ? keyAt
+      : (index: number, count: number) => ({
+          x: keyAt(index, count).x,
+          y: post(index, count).y,
+        });
 
-  const keys = [...L.keys, ...R.keys];
+  const keys =
+    layout === "inline" ? [...L.keys, ...R.keys] : Array.from({ length: 6 }, (_, i) => key(i, 6));
   const { w, h } = style.keySize;
   const xs = [
     ...outline.map((p) => p.x),
@@ -148,8 +161,8 @@ function build(
       outline,
       trace.outline.map((p) => p[2] === "c"),
     ),
-    post: place("posts"),
-    key: place("keys"),
+    post,
+    key,
     truss: trace.truss && {
       top: map.point(trace.truss.top),
       bottom: NUT_Y - (trace.nut.y - trace.truss.bottomY) * map.scale,
