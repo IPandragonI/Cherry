@@ -59,7 +59,7 @@ export const DEFAULT_TRACKER_OPTIONS: TrackerOptions = {
   minRms: 0.0001,
   medianSize: 7,
   averageSize: 3,
-  lockFrames: 3,
+  lockFrames: 2,
   lockToleranceCents: 20,
   jumpCents: 35,
   confirmFrames: 3,

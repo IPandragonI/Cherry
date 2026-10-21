@@ -11,8 +11,8 @@ const MARKER_W = 48;
 const MARKER_H = 56;
 /** Inset of the ±50 cent positions from the field edges, leaving room for ♭ / ♯. */
 const EDGE = 34;
-/** Marker glide (ms): a critically damped spring, so it starts and stops softly. */
-const GLIDE_MS = 90;
+/** Marker glide (ms): a short critically damped spring, quick yet without jerks. */
+const GLIDE_MS = 50;
 /** Must match the dot-field scroll in globals.css (one 14 px row every 1.1 s). */
 const SCROLL_PX_PER_MS = 14 / 1100;
 /** A trail point fades out over this long once it is emitted. */
@@ -33,12 +33,16 @@ interface GaugeProps {
   inTune: boolean;
   /** Real scale, in cents; otherwise a compressed scale (see `gaugePosition`). */
   precise: boolean;
+  /** Identifies the note being tuned: when it changes, the marker jumps straight there. */
+  noteKey: string | null;
 }
 
 interface TrailPoint {
   x: number;
   y: number;
   born: number;
+  /** First point after a jump: not joined to the previous one. */
+  gap?: boolean;
 }
 
 /**
@@ -48,7 +52,7 @@ interface TrailPoint {
  * trail stops (the field keeps scrolling) and the centre line turns to the primary colour.
  * Everything moving is drawn outside React (rAF + canvas + `transform`).
  */
-export function Gauge({ cents, inTune, precise }: GaugeProps) {
+export function Gauge({ cents, inTune, precise, noteKey }: GaugeProps) {
   const t = useT();
   const fieldRef = useRef<HTMLDivElement>(null);
   const markerRef = useRef<HTMLDivElement>(null);
@@ -56,12 +60,21 @@ export function Gauge({ cents, inTune, precise }: GaugeProps) {
   const targetRef = useRef(0);
   const activeRef = useRef(false);
   const inTuneRef = useRef(false);
+  /** Set when the marker must jump to its target instead of gliding (new note heard). */
+  const snapRef = useRef(false);
 
   useEffect(() => {
     targetRef.current = cents === null ? 0 : gaugePosition(cents, precise);
+    // A note appearing (nothing was heard before) shows where it is at once.
+    if (cents !== null && !activeRef.current) snapRef.current = true;
     activeRef.current = cents !== null;
     inTuneRef.current = inTune;
   }, [cents, inTune, precise]);
+
+  // Another string: no glide across the gauge from the previous note.
+  useEffect(() => {
+    snapRef.current = true;
+  }, [noteKey]);
 
   useEffect(() => {
     const field = fieldRef.current;
@@ -97,7 +110,9 @@ export function Gauge({ cents, inTune, precise }: GaugeProps) {
       const dt = Math.min(64, now - last);
       last = now;
       const target = targetRef.current;
-      if (reduced.matches) {
+      const snapped = snapRef.current && activeRef.current;
+      if (snapped) snapRef.current = false;
+      if (reduced.matches || snapped) {
         position = target;
         velocity = 0;
       } else {
@@ -126,7 +141,7 @@ export function Gauge({ cents, inTune, precise }: GaugeProps) {
         // Emitted just under the marker's head while a note is heard, but not once it is in
         // tune: the trail then stops and what is left flows away and fades.
         if (activeRef.current && !inTuneRef.current) {
-          trail.push({ x, y: height / 2 + MARKER_W / 2 - 4, born: now });
+          trail.push({ x, y: height / 2 + MARKER_W / 2 - 4, born: now, gap: snapped });
         }
       }
       while (trail.length && (trail[0].y > height + 4 || now - trail[0].born > TRAIL_FADE_MS)) {
@@ -142,7 +157,7 @@ export function Gauge({ cents, inTune, precise }: GaugeProps) {
           const a = trail[i - 1];
           const b = trail[i];
           const life = 1 - (now - b.born) / TRAIL_FADE_MS;
-          if (life <= 0) continue;
+          if (life <= 0 || b.gap) continue;
           ctx.globalAlpha = 0.75 * life;
           ctx.lineWidth = 1.5 + 2.5 * life;
           ctx.beginPath();

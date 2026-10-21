@@ -118,9 +118,10 @@ export class PartialRefiner {
   }
 
   /** The current spectrum lies entirely after the last reset (no previous note in it) and
-   *  phases can be compared over at least half a window, for full precision. */
+   *  phases can be compared over a quarter of a window: precise enough, and the reading
+   *  appears ~65 ms sooner after a pluck than waiting for half a window. */
   get ready(): boolean {
-    return this.count > this.maxLag + this.maxLag / 2;
+    return this.count > this.maxLag + this.maxLag / 4;
   }
 
   /** Start a new note: older frames must not be compared with the new one. */
