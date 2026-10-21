@@ -86,13 +86,14 @@ draws. The analysis is pure TypeScript shared by the worker and the tests:
 2. **Which note:** McLeod Pitch Method restricted to 55 Hz–1.2 kHz (4096-sample windows,
    every 1024 samples).
 3. **Exact frequency:** each of the first harmonics is measured in an 8192-point spectrum
-   from its phase advance over up to 170 ms (phase vocoder); harmonics that disagree are
-   dropped; a stiffness fit removes the sharpness of upper partials (anchored on the
-   fundamental and 2nd harmonic). Nothing is shown when no harmonic consensus confirms
-   the pitch.
+   from its phase advance over up to 170 ms (phase vocoder); harmonics that disagree fade
+   out of the estimate. The value shown is the **perceived pitch**: led by the 2nd to 4th
+   harmonics, as the ear's is, rather than by the fundamental, which an acoustic guitar's
+   body pulls a few cents flat. Nothing is shown when no harmonic consensus confirms the
+   pitch.
 4. Tracker: outliers ignored unless 3 frames confirm a jump, 7-frame median, adaptive EMA.
 
-The UI adds in-tune hysteresis (enter ≤ 3 cents, leave > 5 cents). Accuracy tests:
+The UI adds in-tune hysteresis (enter ≤ 5 cents, the usual tuner tolerance; leave > 7 cents). Accuracy tests:
 `tests/calibration.test.ts`, `tests/accuracy.test.ts`, `tests/acoustic.test.ts` (an
 in-tune acoustic guitar on all six strings), `tests/scenarios.test.ts`. Real recordings
 saved with **Settings → Diagnostic audio → Record** can be dropped in `tests/recordings/`

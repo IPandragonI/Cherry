@@ -31,13 +31,20 @@ export interface RefinerOptions {
   outlierCents: number;
 }
 
-/** How far the stiffness fit may land from the low-partial estimate. */
-const MAX_STIFFNESS_CENTS = 3;
-
 /** Width (cents) of the fall-off used to find the centre of the partials. */
 const CENTER_WIDTH = 4;
 /** Width (cents) of the fall-off of a partial's influence on the value. */
 const OUTLIER_WIDTH = 3;
+
+/**
+ * How much each partial counts in the perceived pitch. The ear judges the pitch of a
+ * plucked string mostly from its 2nd to 4th partials; on an acoustic guitar the
+ * fundamental is also pulled flat by the body, so it only decides when it is all there is
+ * (a pure tone, a quiet phone mic hearing a single line).
+ */
+const PITCH_DOMINANCE = [0, 0.15, 1, 1, 1, 0.1, 0.1];
+/** Beyond this SNR a partial is precise enough; more must not let it outvote the others. */
+const MAX_SNR = 60;
 
 const DEFAULTS: RefinerOptions = {
   maxHarmonic: 6,
@@ -48,13 +55,13 @@ const DEFAULTS: RefinerOptions = {
 };
 
 /**
- * Precise fundamental frequency from a coarse estimate, the way precision tuners do it:
+ * Precise perceived pitch from a coarse estimate, the way precision tuners do it:
  * each of the first harmonics is located in a Hann-windowed spectrum and its exact
  * frequency is measured from its phase advance between the current frame and one up to
  * `size` samples older (phase vocoder over a long interval: noise in the phase is divided
- * by that interval, so it stays well under a cent even for a quiet low E). The fundamental is the weighted
- * consensus of partial/harmonic-number, favouring low and strong partials; partials that
- * disagree (e.g. an open string ringing along on the same frequency) are discarded.
+ * by that interval, so it stays well under a cent even for a quiet low E). The pitch is the
+ * weighted consensus of partial/harmonic-number, led by the 2nd to 4th partials as the
+ * ear's is; partials that disagree (e.g. an open string ringing along) are discarded.
  *
  * Unlike time-domain period detection, other strings ringing along show up as separate
  * spectral lines and cannot drag the estimate.
@@ -160,13 +167,12 @@ export class PartialRefiner {
     return found.filter((p) => p.magnitude >= strongest * o.minRelativeMagnitude);
   }
 
-  /** Precise fundamental, or null if no usable partial was found. */
+  /** Precise perceived pitch, or null if no usable partial was found. */
   refine(coarse: number): RefinedPitch | null {
     const partials = this.partials(coarse);
     if (partials.length === 0) return null;
     // Inverse-variance weights: a partial's frequency error shrinks with its SNR, and
-    // dividing by k shrinks it k times more for the fundamental. (The slight sharpness of
-    // upper partials on a stiff string is corrected by `fitStiffness` below.)
+    // dividing by k shrinks it k times more for the fundamental.
     const weighted = partials.map((p) => ({
       partial: p,
       f0: p.frequency / p.harmonic,
@@ -201,21 +207,16 @@ export class PartialRefiner {
       .map((p) => ({ ...p, s: softness(cents(p.f0, center), OUTLIER_WIDTH) }))
       .filter((p) => p.s > 0);
 
-    // Estimate dominated by the fundamental and 2nd partial: barely touched by string
-    // stiffness (upper partials of a real string run sharp), so it anchors the result.
-    const low = logMean(
-      soft.map((p) => ({ f0: p.f0, w: p.s * (p.partial.snr / p.partial.harmonic) ** 2 })),
+    // Perceived pitch: what the ear (and most tuners) hear as the note, from the partials
+    // weighted by how much they shape it. String stiffness makes upper partials slightly
+    // sharp; that stretch is part of what is heard, so it is kept rather than fitted away.
+    const frequency = logMean(
+      soft.map((p) => ({
+        f0: p.f0,
+        w: p.s * PITCH_DOMINANCE[p.partial.harmonic] * Math.min(p.partial.snr, MAX_SNR) ** 2,
+      })),
     );
-    // The stiffness fit uses every partial for precision and removes their sharpness. If
-    // it strays from the low-partial estimate, it is amplifying noise (e.g. a body
-    // resonance nudging one partial) and the low-partial estimate is used instead.
-    const near = (f: number) => Math.abs(cents(f, low)) <= MAX_STIFFNESS_CENTS;
-    const stiffness = fitStiffness(soft.map((p) => ({ partial: p.partial, scale: p.s })));
-    if (stiffness && near(stiffness)) return { frequency: stiffness, support, agreement };
-    // No usable fit: the most precise average (all partials, inverse-variance weights),
-    // as long as it agrees with the anchor too.
-    const precise = logMean(soft.map((p) => ({ f0: p.f0, w: p.w * p.s })));
-    return { frequency: near(precise) ? precise : low, support, agreement };
+    return { frequency, support, agreement };
   }
 
   /** Median magnitude of the bins around a peak (excluding the peak's main lobe). */
@@ -263,33 +264,6 @@ export class PartialRefiner {
     const d = a - 2 * b + c;
     return d < 0 ? bin + (0.5 * (a - c)) / d : bin;
   }
-}
-
-/**
- * A stiff string's partials run sharp: f_k = k·f0·√(1 + B·k²). With three or more partials,
- * (f_k/k)² = f0² + f0²·B·k² is a straight line in k², so a weighted least-squares fit gives
- * f0 and B. Returns the frequency of the fundamental partial, f0·√(1 + B) — what a hardware
- * tuner locks onto — even when the fundamental itself is too weak to measure (phone mics).
- */
-function fitStiffness(partials: { partial: PartialEstimate; scale: number }[]): number | null {
-  if (partials.length < 3) return null;
-  const points = partials.map(({ partial: p, scale }) => ({
-    x: p.harmonic * p.harmonic,
-    y: (p.frequency / p.harmonic) ** 2,
-    w: scale * (p.snr * p.harmonic) ** 2,
-  }));
-  const sw = points.reduce((s, p) => s + p.w, 0);
-  const mx = points.reduce((s, p) => s + p.w * p.x, 0) / sw;
-  const my = points.reduce((s, p) => s + p.w * p.y, 0) / sw;
-  const sxx = points.reduce((s, p) => s + p.w * (p.x - mx) ** 2, 0);
-  if (sxx <= 0) return null;
-  const slope = points.reduce((s, p) => s + p.w * (p.x - mx) * (p.y - my), 0) / sxx;
-  const f0Squared = my - slope * mx;
-  if (!(f0Squared > 0)) return null;
-  const stiffness = slope / f0Squared;
-  // Real guitar strings: B is roughly 1e-5…1e-3. Anything else is noise, not physics.
-  if (!(stiffness >= 0 && stiffness < 2e-3)) return null;
-  return Math.sqrt(f0Squared) * Math.sqrt(1 + stiffness);
 }
 
 export interface PhaseAdvance {

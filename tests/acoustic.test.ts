@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import { centsBetween, midiToFrequency } from "@/lib/music/notes";
 import { PitchAnalyzer } from "@/lib/pitch/analyzer";
 import { Biquad } from "@/lib/pitch/biquad";
+import { perceivedPitch } from "./helpers/strings";
 
 const SR = 48000;
 const N = SR * 3;
@@ -90,8 +91,8 @@ function acousticString(f0: number, seed: number) {
 describe("an in-tune acoustic guitar reads in tune on every string", () => {
   it.each(STRINGS)("%s", (_, midi) => {
     const f0 = midiToFrequency(midi);
-    // What a tuner should read: the fundamental partial of the stiff string.
-    const target = f0 * Math.sqrt(1 + STIFFNESS);
+    // What a tuner should read: the pitch heard from the stiff string.
+    const target = perceivedPitch(f0, STIFFNESS);
     const signal = acousticString(f0, midi);
     const analyzer = new PitchAnalyzer(SR);
     const cents: number[] = [];

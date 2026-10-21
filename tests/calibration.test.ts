@@ -8,11 +8,13 @@ import { describe, expect, it } from "vitest";
 import { centsBetween, midiToFrequency } from "@/lib/music/notes";
 import { PitchAnalyzer } from "@/lib/pitch/analyzer";
 import { Biquad } from "@/lib/pitch/biquad";
+import { perceivedPitch } from "./helpers/strings";
 
 const STANDARD = [40, 45, 50, 55, 59, 64];
+const STIFFNESS = 1e-4;
 const AMPLITUDES = [0.5, 1, 0.8, 0.5, 0.35, 0.25, 0.15, 0.1];
 
-function pluck(f0: number, sampleRate: number, { stiffness = 1e-4, lowCut = 0 } = {}) {
+function pluck(f0: number, sampleRate: number, { stiffness = STIFFNESS, lowCut = 0 } = {}) {
   const n = Math.floor(sampleRate * 1.6);
   const out = new Float32Array(n);
   const phases = AMPLITUDES.map(() => 0);
@@ -51,7 +53,7 @@ const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
 describe.each([48000, 44100, 16000])("at %i Hz", (sampleRate) => {
   it.each(STANDARD)("an in-tune string (MIDI %i) reads 0 ±0.5 cents, every frame ±1", (midi) => {
     const f0 = midiToFrequency(midi);
-    const cents = readings(pluck(f0, sampleRate), sampleRate, f0);
+    const cents = readings(pluck(f0, sampleRate), sampleRate, perceivedPitch(f0, STIFFNESS));
     expect(cents.length).toBeGreaterThan(20);
     expect(Math.abs(mean(cents))).toBeLessThan(0.5);
     expect(Math.max(...cents.map(Math.abs))).toBeLessThan(1);
@@ -61,7 +63,7 @@ describe.each([48000, 44100, 16000])("at %i Hz", (sampleRate) => {
 describe("phone microphone (weak fundamental)", () => {
   it.each(STANDARD)("MIDI %i still reads in tune", (midi) => {
     const f0 = midiToFrequency(midi);
-    const cents = readings(pluck(f0, 48000, { lowCut: 150 }), 48000, f0);
+    const cents = readings(pluck(f0, 48000, { lowCut: 150 }), 48000, perceivedPitch(f0, STIFFNESS));
     expect(cents.length).toBeGreaterThan(20);
     expect(Math.abs(mean(cents))).toBeLessThan(0.5);
   });

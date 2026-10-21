@@ -5,8 +5,9 @@
  * on the phone that showed the reading oscillating between −8 and −12 cents. Measured in
  * the recording itself (relative to A4 = 440 Hz): fundamental −11 cents, 2nd and 3rd
  * partials about −7 cents (the body pulls the fundamental), period estimate −10 cents. The
- * string in this take is flat; what was wrong was the oscillation: the 2nd partial, 4.3
- * cents from the fundamental, kept dropping in and out of the estimate.
+ * oscillation came from the 2nd partial, 4.3 cents from the fundamental, dropping in and
+ * out of the estimate. The tuner shows the perceived pitch, led by the 2nd to 4th
+ * partials: about −8 cents.
  */
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -33,12 +34,12 @@ describe("acoustic D3 (user recording)", () => {
     expect(cents.length).toBeGreaterThan(100);
     const steps = cents.slice(1).map((c, i) => Math.abs(c - cents[i]));
     expect(Math.max(...steps)).toBeLessThan(0.5);
-    expect(Math.max(...cents) - Math.min(...cents)).toBeLessThan(3);
+    expect(Math.max(...cents) - Math.min(...cents)).toBeLessThan(2);
   });
 
-  it("reads what the recording contains: a D about 9 cents flat at A4 = 440 Hz", () => {
+  it("reads the pitch heard, from the partials: a D about 8 cents flat at A4 = 440 Hz", () => {
     const mean = cents.reduce((a, b) => a + b, 0) / cents.length;
-    expect(mean).toBeGreaterThan(-11);
-    expect(mean).toBeLessThan(-7);
+    expect(mean).toBeGreaterThan(-9);
+    expect(mean).toBeLessThan(-6.5);
   });
 });

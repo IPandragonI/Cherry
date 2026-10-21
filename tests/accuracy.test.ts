@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { centsBetween, midiToFrequency } from "@/lib/music/notes";
 import { PitchAnalyzer } from "@/lib/pitch/analyzer";
 import { Biquad } from "@/lib/pitch/biquad";
+import { perceivedPitch } from "./helpers/strings";
 
 const SR = 48000;
 const N = SR * 3;
@@ -33,9 +34,6 @@ function string(f0: number, { amp = 1, stiffness = 1.5e-4, decay = 0.8, fundamen
   });
   return out;
 }
-
-/** The note a hardware tuner reads: the fundamental partial of the stiff string. */
-const fundamentalPartial = (f0: number, stiffness = 1.5e-4) => f0 * Math.sqrt(1 + stiffness);
 
 function room(x: Float32Array) {
   const out = Float32Array.from(x);
@@ -88,7 +86,7 @@ const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
 const worst = (xs: number[]) => Math.max(...xs.map(Math.abs));
 
 describe("low E (E2) reads true", () => {
-  const target = fundamentalPartial(E2);
+  const target = perceivedPitch(E2, 1.5e-4);
 
   it.each([
     ["clean", () => mix(string(E2))],

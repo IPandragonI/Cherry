@@ -17,9 +17,10 @@ import { useCustomTunings } from "@/store/tunings";
 import { useDemo } from "./demo";
 import { tunerEngine, type MicStatus } from "./engine";
 
-export const IN_TUNE_CENTS = 3;
-/** Once in tune, the string stays "in tune" until it drifts past this (no flicker at ±3). */
-export const LEAVE_IN_TUNE_CENTS = 5;
+/** Usual tolerance of guitar tuners: closer than this is not heard on a guitar. */
+export const IN_TUNE_CENTS = 5;
+/** Once in tune, the string stays "in tune" until it drifts past this (no flicker at ±5). */
+export const LEAVE_IN_TUNE_CENTS = 7;
 const SLIGHT_CENTS = 15;
 
 export type TuneStatus =
