@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { FlatIcon, SharpIcon } from "@/components/ui/icons";
+import { displayDeviation } from "@/lib/audio/useTuner";
 import { useT } from "@/lib/i18n/useT";
 import { clampCents } from "@/lib/music/notes";
 
@@ -20,9 +21,9 @@ const TRAIL_FADE_MS = 2600;
 const xFor = (cents: number, width: number) =>
   EDGE + ((clampCents(cents) + 50) / 100) * (width - 2 * EDGE);
 
-function formatCents(cents: number | null): string {
+function formatDeviation(cents: number | null, precise: boolean): string {
   if (cents === null) return "–";
-  const rounded = Math.round(clampCents(cents));
+  const rounded = displayDeviation(clampCents(cents), precise);
   if (rounded === 0) return "0";
   return rounded > 0 ? `+${rounded}` : `−${Math.abs(rounded)}`;
 }
@@ -30,6 +31,8 @@ function formatCents(cents: number | null): string {
 interface GaugeProps {
   cents: number | null;
   inTune: boolean;
+  /** Number in cents; otherwise in tenths of the cents (the marker position is the same). */
+  precise: boolean;
 }
 
 interface TrailPoint {
@@ -45,7 +48,7 @@ interface TrailPoint {
  * trail stops (the field keeps scrolling) and the centre line turns to the primary colour.
  * Everything moving is drawn outside React (rAF + canvas + `transform`).
  */
-export function Gauge({ cents, inTune }: GaugeProps) {
+export function Gauge({ cents, inTune, precise }: GaugeProps) {
   const t = useT();
   const fieldRef = useRef<HTMLDivElement>(null);
   const markerRef = useRef<HTMLDivElement>(null);
@@ -147,7 +150,9 @@ export function Gauge({ cents, inTune }: GaugeProps) {
   }, []);
 
   const active = cents !== null;
-  const value = formatCents(cents);
+  const value = formatDeviation(cents, precise);
+  const range = displayDeviation(50, precise);
+  const lowest = -range;
   const line = inTune ? "var(--color-primary)" : "var(--tuner-ink)";
   const accent = inTune ? "var(--tuner-ok)" : "var(--color-primary)";
 
@@ -156,14 +161,14 @@ export function Gauge({ cents, inTune }: GaugeProps) {
       ref={fieldRef}
       className="relative mx-auto h-full w-full max-w-[342px] select-none"
       role="meter"
-      aria-valuemin={-50}
-      aria-valuemax={50}
-      aria-valuenow={active ? Math.round(clampCents(cents)) : 0}
+      aria-valuemin={lowest}
+      aria-valuemax={range}
+      aria-valuenow={active ? displayDeviation(clampCents(cents), precise) : 0}
       aria-valuetext={
         active
           ? inTune
             ? t("tuner.inTune")
-            : t("tuner.gauge.label", { cents: value })
+            : t(precise ? "tuner.gauge.label" : "tuner.gauge.labelRelaxed", { cents: value })
           : t("tuner.noSignal")
       }
     >

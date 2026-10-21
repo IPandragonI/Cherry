@@ -36,6 +36,8 @@ export interface Settings {
   notation: NotationPref;
   /** Mirrors the headstock and the string indicators for left-handed players. */
   leftHanded: boolean;
+  /** Show the deviation to the cent, with a strict in-tune window (else a relaxed scale). */
+  precise: boolean;
   bpm: number;
   /** Beats per bar (the first one is accented). */
   beatsPerBar: number;
@@ -65,6 +67,7 @@ export const DEFAULT_SETTINGS: Settings = {
   demo: false,
   notation: "letters",
   leftHanded: false,
+  precise: false,
   bpm: 90,
   beatsPerBar: 4,
   metronomeSound: "click",
@@ -110,6 +113,7 @@ export const useSettings = create<Settings & SettingsActions>()(
         demo: s.demo,
         notation: s.notation,
         leftHanded: s.leftHanded,
+        precise: s.precise,
         bpm: s.bpm,
         beatsPerBar: s.beatsPerBar,
         metronomeSound: s.metronomeSound,

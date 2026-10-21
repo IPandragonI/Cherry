@@ -21,6 +21,7 @@ const THEMES: ThemePref[] = ["system", "light", "dark"];
 const A4_PRESETS = [432, 440, 442, 444];
 const STORAGE_KEYS = [SETTINGS_STORAGE_KEY, "cherry-tunings", "cherry-favorites"];
 const TOGGLES = [
+  ["precise", "settings.precise"],
   ["leftHanded", "settings.leftHanded"],
   ["refTone", "settings.refTone"],
   ["haptics", "settings.haptics"],

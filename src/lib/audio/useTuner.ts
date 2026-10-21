@@ -20,6 +20,11 @@ import { tunerEngine, type MicStatus } from "./engine";
 export const IN_TUNE_CENTS = 8;
 /** Once in tune, the string stays "in tune" until it drifts past this (no flicker at ±8). */
 export const LEAVE_IN_TUNE_CENTS = 10;
+/** Precise mode: in tune within ±3 cents, left beyond ±5. */
+export const PRECISE_IN_TUNE_CENTS = 3;
+export const PRECISE_LEAVE_IN_TUNE_CENTS = 5;
+/** Default (relaxed) display: one unit per 10 cents, like popular tuner apps. */
+const RELAXED_CENTS_PER_UNIT = 10;
 const SLIGHT_CENTS = 15;
 
 export type TuneStatus =
@@ -53,16 +58,33 @@ export interface TunerState {
 const useLastDetected = create<{ index: number | null }>()(() => ({ index: null }));
 
 /** `wasInTune` widens the in-tune window (hysteresis) so the state doesn't flicker. */
-export function tuneStatus(cents: number | null, wasInTune = false): TuneStatus {
+export function tuneStatus(cents: number | null, wasInTune = false, precise = false): TuneStatus {
   if (cents === null) return "noSignal";
-  if (Math.abs(cents) <= (wasInTune ? LEAVE_IN_TUNE_CENTS : IN_TUNE_CENTS)) return "inTune";
+  const window = precise
+    ? wasInTune
+      ? PRECISE_LEAVE_IN_TUNE_CENTS
+      : PRECISE_IN_TUNE_CENTS
+    : wasInTune
+      ? LEAVE_IN_TUNE_CENTS
+      : IN_TUNE_CENTS;
+  if (Math.abs(cents) <= window) return "inTune";
   if (cents < 0) return cents >= -SLIGHT_CENTS ? "slightlyFlat" : "flat";
   return cents <= SLIGHT_CENTS ? "slightlySharp" : "sharp";
 }
 
+/**
+ * The number shown for a deviation: cents in precise mode, otherwise tenths of the cents
+ * (−10 cents shows −1), rounded symmetrically.
+ */
+export function displayDeviation(cents: number, precise: boolean): number {
+  const value = precise ? cents : cents / RELAXED_CENTS_PER_UNIT;
+  const rounded = Math.sign(value) * Math.round(Math.abs(value));
+  return rounded === 0 ? 0 : rounded;
+}
+
 /** Single source of truth for the tuner UI: microphone (or demo) input + settings. */
 export function useTuner(): TunerState {
-  const { tuningId, a4, mode, demo } = useSettings();
+  const { tuningId, a4, mode, demo, precise } = useSettings();
   const selected = useSettings((s) => s.selectedString);
   const custom = useCustomTunings((s) => s.custom);
   const demoCents = useDemo((s) => s.cents);
@@ -104,7 +126,7 @@ export function useTuner(): TunerState {
   const midi = targetString === null ? null : strings[targetString];
 
   const [wasInTune, setWasInTune] = useState(false);
-  const status = tuneStatus(cents, wasInTune);
+  const status = tuneStatus(cents, wasInTune, precise);
   if ((status === "inTune") !== wasInTune) setWasInTune(status === "inTune");
 
   return {

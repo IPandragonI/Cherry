@@ -18,7 +18,7 @@ test("desktop: listens automatically and hears a guitar on the right input chann
     timeout: 20_000,
   });
   await expect(page.getByText(/110,6 Hz/)).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByRole("meter")).toHaveAttribute("aria-valuetext", /\+9 cents/);
+  await expect(page.getByRole("meter")).toHaveAttribute("aria-valuetext", /Écart : \+1$/);
 });
 
 test("mic toggle turns listening off and back on", async ({ page }) => {
@@ -71,14 +71,14 @@ test("listening resumes after the app is hidden and shown again", async ({ page 
 
   await setVisibility(page, "visible");
   await expect(root).toHaveAttribute("data-mic-status", "running");
-  await expect(page.getByRole("meter")).toHaveAttribute("aria-valuetext", /\+9 cents/, {
+  await expect(page.getByRole("meter")).toHaveAttribute("aria-valuetext", /Écart : \+1$/, {
     timeout: 10_000,
   });
 
   // Twice in a row, the way people actually switch apps.
   await setVisibility(page, "hidden");
   await setVisibility(page, "visible");
-  await expect(page.getByRole("meter")).toHaveAttribute("aria-valuetext", /\+9 cents/, {
+  await expect(page.getByRole("meter")).toHaveAttribute("aria-valuetext", /Écart : \+1$/, {
     timeout: 10_000,
   });
 });
@@ -101,12 +101,12 @@ test("a non-standard reference pitch is flagged and shifts the reading", async (
   await page.addInitScript(() =>
     localStorage.setItem(
       "cherry-settings",
-      JSON.stringify({ state: { locale: "fr", a4: 446 }, version: 1 }),
+      JSON.stringify({ state: { locale: "fr", a4: 446, precise: true }, version: 1 }),
     ),
   );
   await page.goto("/");
   await expect(page.getByRole("link", { name: "Diapason réglé sur La4 = 446 Hz" })).toBeVisible();
-  // +9 cents at 440 Hz is −14.4 cents against A4 = 446 Hz.
+  // +9 cents at 440 Hz is −14.4 cents against A4 = 446 Hz (precise mode: to the cent).
   await expect(page.getByRole("meter")).toHaveAttribute("aria-valuetext", /−14 cents/, {
     timeout: 10_000,
   });

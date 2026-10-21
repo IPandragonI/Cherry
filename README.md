@@ -16,7 +16,7 @@ browser: no backend, no account; preferences live in `localStorage`. UI in Frenc
 - **Metronome** (`/metronome`) — 30–250 BPM, tap tempo, 2–6 beats per bar with accented
   downbeat, clicks scheduled on the audio clock, visual beat.
 - **Settings** (`/settings`) — theme, reference pitch, interface language, note notation
-  (letters / solfège), left-handed mode, in-tune chime, demo mode, audio diagnostic with
+  (letters / solfège), precise mode, left-handed mode, in-tune chime, demo mode, audio diagnostic with
   WAV recorder, credits
   (`/settings/credits`), clear local data.
 
@@ -97,7 +97,7 @@ draws. The analysis is pure TypeScript shared by the worker and the tests:
 5. Display: the last value stays on screen for 4 s after the note fades, and changes under
    1 cent are not shown (`src/lib/audio/readingHold.ts`).
 
-The UI adds in-tune hysteresis (enter ≤ 8 cents, leave > 10 cents). Accuracy tests:
+By default the gauge number is in tenths of the cents (−10 cents shows −1, like popular tuner apps) and a string is in tune within ±8 cents (left beyond ±10); **Settings → Precise mode** shows cents and is in tune within ±3 (left beyond ±5). Accuracy tests:
 `tests/calibration.test.ts`, `tests/accuracy.test.ts`, `tests/acoustic.test.ts` (an
 in-tune acoustic guitar on all six strings), `tests/scenarios.test.ts`. Real recordings
 saved with **Settings → Diagnostic audio → Record** can be dropped in `tests/recordings/`

@@ -24,7 +24,7 @@ import { TuningPicker, tuningNotes } from "./TuningPicker";
 export function TunerScreen() {
   const t = useT();
   const tuner = useTuner();
-  const { skin, headstock, a4, refTone, haptics, tuneChime, leftHanded } = useSettings();
+  const { skin, headstock, a4, refTone, haptics, tuneChime, leftHanded, precise } = useSettings();
   const notation = useNotation();
   const setSettings = useSettings((s) => s.set);
   const selectString = useSettings((s) => s.selectString);
@@ -121,7 +121,7 @@ export function TunerScreen() {
       )}
 
       <section className="h-[120px] shrink-0 px-4 py-2">
-        <Gauge cents={tuner.cents} inTune={inTune} />
+        <Gauge cents={tuner.cents} inTune={inTune} precise={precise} />
       </section>
 
       <div className="flex min-h-0 flex-1 items-center justify-center px-4">
