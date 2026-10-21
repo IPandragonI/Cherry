@@ -1,36 +1,105 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Cherry 🍒
 
-## Getting Started
+Mobile-first guitar tuner PWA with a chord library and a chord finder. Everything runs in the
+browser: no backend, no account; preferences live in `localStorage`. UI in French and English.
 
-First, run the development server:
+- **Tuner** (`/`) — live pitch detection (AudioWorklet + McLeod Pitch Method), auto/manual
+  string mode, 11 preset tunings + custom tunings, adjustable A4 (415–466 Hz), three neck skins,
+  in-tune haptics, Karplus-Strong reference tones, screen wake lock.
+- **Chords** (`/chords`) — 204 chords (12 roots × 17 qualities, 724 voicings), SVG diagrams,
+  voicing carousel, strum playback, favorites.
+- **Finder** (`/finder`) — tap a 12-fret board, get the chord name with alternatives and
+  slash chords, following the current tuning.
+- **Settings** (`/settings`) — theme (system/light/dark), reference pitch, language, demo
+  mode, clear local data.
+
+## Stack
+
+Next.js 16 (App Router, Turbopack) · TypeScript strict · Tailwind CSS v4 + daisyUI v5 (custom
+`cherry` / `cherry-dark` themes in `src/app/globals.css`) · Zustand (`persist`) · Serwist
+(`@serwist/turbopack`) · pitchy · Vitest · Playwright · ESLint + Prettier.
+
+## Getting started
+
+Requires Node 20+ and pnpm 10.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
+pnpm dev          # http://localhost:3000 (builds the audio worklet first)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+| Script               | What it does                                                          |
+| -------------------- | --------------------------------------------------------------------- |
+| `pnpm dev` / `build` | Bundle `public/worklets/pitch-processor.js`, then run Next            |
+| `pnpm start`         | Serve the production build                                            |
+| `pnpm check`         | Lint + type-check + unit tests                                        |
+| `pnpm test`          | Vitest: note/cents math, pitch detection on synthetic signals, chords |
+| `pnpm test:e2e`      | Playwright smoke tests (needs `pnpm build`; starts `pnpm start`)      |
+| `pnpm chords`        | Regenerate `src/lib/music/chords.json` from the shape templates       |
+| `pnpm icons`         | Regenerate the PWA icons in `public/icons/`                           |
+| `pnpm format`        | Prettier                                                              |
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+First Playwright run: `pnpm exec playwright install chromium`.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Developing without a microphone
 
-## Learn More
+Turn on **Settings → Demo mode**. The tuner then simulates the selected string with a
+deviation slider and an "auto sweep" that swings into tune, which is handy for UI work and
+screenshots.
 
-To learn more about Next.js, take a look at the following resources:
+## Project layout
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+src/
+  app/                 root layout (fonts, pre-hydration theme script), manifest, sw.ts
+    (tabs)/            tuner page + chords/ finder/ settings/ with the shared tab bar
+    serwist/[path]/    route that builds and serves the service worker
+  components/          tuner/ (Gauge, Neck, Readout, StringPills, pickers), chords/, finder/, ui/
+  lib/
+    audio/             pitch-worklet, engine (mic + wake lock), useTuner, Karplus-Strong, demo
+    pitch/             biquad filters, PitchAnalyzer (pitchy), PitchTracker (median + stability gate)
+    music/             notes/cents, tunings, chord formulas, recognizer, shape generator, chords.json
+    i18n/              FR/EN dictionaries + useT()
+  store/               Zustand stores: settings, custom tunings, favorites
+tests/                 Vitest unit tests
+e2e/                   Playwright smoke tests
+scripts/               worklet bundler, chord generator, icon generator
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+The detection pipeline is pure TypeScript shared by the worklet and the tests: band-pass
+(60 Hz–1 kHz) → MPM on 4096-sample windows every 1024 samples → clarity/level gate →
+5-frame median → lock after 3 agreeing frames (±20 cents) → hold through short dropouts.
 
-## Deploy on Vercel
+## Deploy to Vercel
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. Push the repository to GitHub/GitLab/Bitbucket.
+2. In Vercel, **Add New → Project**, import the repo. The defaults work: framework Next.js,
+   install command `pnpm install`, build command `pnpm build` (which bundles the worklet).
+3. Deploy. Each deploy's commit SHA (`VERCEL_GIT_COMMIT_SHA`) versions the precached pages,
+   so installed apps pick up the new version on their next launch.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+CLI alternative: `pnpm dlx vercel` (preview) / `pnpm dlx vercel --prod`.
+
+## Testing the PWA
+
+- The service worker is **disabled in `pnpm dev`**. Test offline behaviour with
+  `pnpm build && pnpm start`, open the app once, then go offline (DevTools → Network →
+  Offline). All four routes are precached.
+- The microphone and service worker need a **secure context**: `localhost` works; on a
+  phone use the Vercel deployment or an HTTPS tunnel (e.g.
+  `cloudflared tunnel --url http://localhost:3000`). Plain `http://192.168.x.x` will show the
+  "HTTPS required" state.
+- Chrome/Android: the install prompt appears from the address bar menu. Lighthouse's PWA
+  checks can be run against `pnpm start`.
+
+### iOS Safari caveats
+
+- Audio only starts from a user gesture. That's why the tuner has an explicit **Start
+  tuning** button. The AudioContext is created synchronously inside that tap.
+- The microphone permission is asked again after each reload in Safari, and in a
+  home-screen web app it may be asked on each launch.
+- Safari suspends audio when the app goes to the background. Cherry resumes the context when
+  it becomes visible again, but you may need to tap Start again after a phone call.
+- Screen Wake Lock needs iOS 16.4+, and `navigator.vibrate` isn't supported on iOS, so the
+  in-tune haptic is Android-only.
+- Install from Safari's **Share → Add to Home Screen**. There is no install prompt.

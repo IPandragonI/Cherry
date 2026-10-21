@@ -1,26 +1,167 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@plugin "daisyui" {
+  themes: false;
+}
+
+/* Light theme from mockup E: cherry blossom, cream, stone, sage and slate. Text and
+   filled accents use deepened variants of the palette hues to keep WCAG AA contrast. */
+@plugin "daisyui/theme" {
+  name: "cherry";
+  default: true;
+  prefersdark: false;
+  color-scheme: light;
+  --color-base-100: #fcf6f2;
+  --color-base-200: #f7e1d7;
+  --color-base-300: #dedbd2;
+  --color-base-content: #2e3a3c;
+  --color-primary: #a8384c;
+  --color-primary-content: #ffffff;
+  --color-secondary: #edafb8;
+  --color-secondary-content: #4a1e27;
+  --color-accent: #b0c4b1;
+  --color-accent-content: #22362a;
+  --color-neutral: #4a5759;
+  --color-neutral-content: #f7efe9;
+  --color-info: #33647f;
+  --color-info-content: #ffffff;
+  --color-success: #3f6b4f;
+  --color-success-content: #ffffff;
+  --color-warning: #8f520f;
+  --color-warning-content: #ffffff;
+  --color-error: #b3261e;
+  --color-error-content: #ffffff;
+  --radius-selector: 2rem;
+  --radius-field: 0.75rem;
+  --radius-box: 1.25rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 1;
+  --noise: 0;
+}
+
+/* Warm dark counterpart: aubergine-brown surfaces, lighter cherry and sage accents. */
+@plugin "daisyui/theme" {
+  name: "cherry-dark";
+  default: false;
+  prefersdark: true;
+  color-scheme: dark;
+  --color-base-100: #1c1718;
+  --color-base-200: #251d1f;
+  --color-base-300: #352a2c;
+  --color-base-content: #f2e5dd;
+  --color-primary: #ee99a7;
+  --color-primary-content: #2a0c13;
+  --color-secondary: #5e3a42;
+  --color-secondary-content: #f7e1d7;
+  --color-accent: #b0c4b1;
+  --color-accent-content: #1a2a1e;
+  --color-neutral: #3b4648;
+  --color-neutral-content: #f2e5dd;
+  --color-info: #8fc1e0;
+  --color-info-content: #0d2230;
+  --color-success: #94c7a2;
+  --color-success-content: #10241a;
+  --color-warning: #e6b26a;
+  --color-warning-content: #2b1a05;
+  --color-error: #f2a29a;
+  --color-error-content: #3a0b07;
+  --radius-selector: 2rem;
+  --radius-field: 0.75rem;
+  --radius-box: 1.25rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 1;
+  --noise: 0;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-instrument), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-fraunces), Georgia, serif;
+}
+
+/* Semantic tuner colours used by SVGs; they follow the active theme. */
+:root {
+  --tuner-accent: var(--color-primary);
+  --tuner-accent-deep: color-mix(in oklab, var(--color-primary) 72%, black);
+  --tuner-ok: var(--color-success);
+  --tuner-ok-deep: color-mix(in oklab, var(--color-success) 72%, black);
+  --tuner-ink: color-mix(in oklab, var(--color-base-content) 50%, transparent);
+  --tuner-ink-strong: color-mix(in oklab, var(--color-base-content) 80%, transparent);
+  --tuner-band: color-mix(in oklab, var(--color-success) 16%, transparent);
+  --tuner-string: #cfc8bd;
+  /* Gauge bubble: deep gradient + white text on light theme… */
+  --bubble-fg: #ffffff;
+  --bubble-accent-from: color-mix(in oklab, var(--tuner-accent) 70%, white);
+  --bubble-accent-to: var(--tuner-accent-deep);
+  --bubble-ok-from: color-mix(in oklab, var(--tuner-ok) 70%, white);
+  --bubble-ok-to: var(--tuner-ok-deep);
+}
+
+/* …light gradient + dark text on the dark theme, where the accents are pastel. */
+[data-theme="cherry-dark"] {
+  --bubble-fg: #1c1718;
+  --bubble-accent-from: color-mix(in oklab, var(--tuner-accent) 80%, white);
+  --bubble-accent-to: var(--tuner-accent);
+  --bubble-ok-from: color-mix(in oklab, var(--tuner-ok) 80%, white);
+  --bubble-ok-to: var(--tuner-ok);
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  :root:not([data-theme]) {
+    --bubble-fg: #1c1718;
+    --bubble-accent-from: color-mix(in oklab, var(--tuner-accent) 80%, white);
+    --bubble-accent-to: var(--tuner-accent);
+    --bubble-ok-from: color-mix(in oklab, var(--tuner-ok) 80%, white);
+    --bubble-ok-to: var(--tuner-ok);
   }
 }
 
+/* Neck skins: fingerboard wood gradient, frets and inlays. The headstock stays walnut. */
+.neck {
+  --wood-head-1: #7a5236;
+  --wood-head-2: #553723;
+  --peg: #ddd6ca;
+  --nut: #f3ecdc;
+}
+
+.neck[data-skin="maple"] {
+  --wood-1: #ecd3a6;
+  --wood-2: #d6af76;
+  --fret: #9f978a;
+  --inlay: #3a2a1f;
+}
+
+.neck[data-skin="rosewood"] {
+  --wood-1: #6b3c29;
+  --wood-2: #4a2719;
+  --fret: #c9c2b5;
+  --inlay: #efe6d6;
+}
+
+.neck[data-skin="ebony"] {
+  --wood-1: #352b2c;
+  --wood-2: #1b1617;
+  --fret: #bdb6a9;
+  --inlay: #e9e3d8;
+}
+
+html,
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-base-100);
+  color: var(--color-base-content);
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

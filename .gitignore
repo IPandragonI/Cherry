@@ -1,4 +1,5 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+/.idea
 
 # dependencies
 /node_modules
@@ -39,3 +40,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# generated audio worklet bundle
+/public/worklets/
+
+# playwright
+/test-results/
+/playwright-report/
