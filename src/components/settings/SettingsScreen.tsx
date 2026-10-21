@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { ChevronRightIcon, TrashIcon } from "@/components/ui/icons";
 import { AudioDiagnostic } from "./AudioDiagnostic";
+import { Calibration } from "./Calibration";
 import { useT } from "@/lib/i18n/useT";
 import { DEFAULT_A4, MAX_A4, MIN_A4 } from "@/lib/music/notes";
 import {
@@ -185,6 +186,8 @@ export function SettingsScreen() {
           </Row>
         ))}
       </section>
+
+      <Calibration />
 
       <AudioDiagnostic />
 

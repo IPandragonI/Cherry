@@ -129,3 +129,25 @@ test("the diagnostic records the raw input as a WAV file", async ({ page }) => {
   const { size } = statSync(await file.path());
   expect(size).toBeGreaterThan(6 * 44100 * 2); // 6 s of 16-bit audio
 });
+
+test("calibrating on a reference A makes it read in tune", async ({ page }) => {
+  // The fake microphone plays an A2 9.4 cents sharp: as if this device read A440 sharp.
+  await page.addInitScript(() =>
+    localStorage.setItem(
+      "cherry-settings",
+      JSON.stringify({ state: { locale: "fr" }, version: 2 }),
+    ),
+  );
+  await page.goto("/settings");
+  await page.getByRole("button", { name: "Calibrer sur un La" }).click();
+  await expect(page.getByText(/Calibré : −9,\d|Calibré : −9\.\d/)).toBeVisible({ timeout: 20_000 });
+
+  await page.getByRole("link", { name: "Accordeur" }).click();
+  await expect(page.getByRole("meter")).toHaveAttribute(
+    "aria-valuetext",
+    /Corde accordée|[+−]?[01] cents/,
+    {
+      timeout: 15_000,
+    },
+  );
+});

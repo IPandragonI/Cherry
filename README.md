@@ -16,7 +16,9 @@ browser: no backend, no account; preferences live in `localStorage`. UI in Frenc
 - **Metronome** (`/metronome`) — 30–250 BPM, tap tempo, 2–6 beats per bar with accented
   downbeat, clicks scheduled on the audio clock, visual beat.
 - **Settings** (`/settings`) — theme, reference pitch, interface language, note notation
-  (letters / solfège), left-handed mode, demo mode, audio diagnostic, credits
+  (letters / solfège), left-handed mode, in-tune chime, calibration against a reference A
+  (fine correction in cents, applied to every reading), demo mode, audio diagnostic with
+  WAV recorder, credits
   (`/settings/credits`), clear local data.
 
 ## Stack

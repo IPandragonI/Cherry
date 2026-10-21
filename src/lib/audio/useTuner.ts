@@ -10,6 +10,7 @@ import {
   solfegeName,
   type NoteName,
 } from "@/lib/music/notes";
+import { calibrate } from "@/lib/music/calibration";
 import { closestString, findTuning, type Tuning } from "@/lib/music/tunings";
 import { useSettings, type TunerMode } from "@/store/settings";
 import { useCustomTunings } from "@/store/tunings";
@@ -61,7 +62,7 @@ export function tuneStatus(cents: number | null, wasInTune = false): TuneStatus 
 
 /** Single source of truth for the tuner UI: microphone (or demo) input + settings. */
 export function useTuner(): TunerState {
-  const { tuningId, a4, mode, demo } = useSettings();
+  const { tuningId, a4, mode, demo, calibration } = useSettings();
   const selected = useSettings((s) => s.selectedString);
   const custom = useCustomTunings((s) => s.custom);
   const demoCents = useDemo((s) => s.cents);
@@ -77,7 +78,9 @@ export function useTuner(): TunerState {
 
   const frequency = demo
     ? midiToFrequency(strings[selectedString], a4) * 2 ** (demoCents / 1200)
-    : engine.frequency;
+    : engine.frequency === null
+      ? null
+      : calibrate(engine.frequency, calibration);
 
   let detected: number | null = null;
   let cents: number | null = null;

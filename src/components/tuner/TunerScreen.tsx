@@ -6,6 +6,7 @@ import { ChevronDownIcon, MicIcon, MicOffIcon, PaletteIcon } from "@/components/
 import { sweepCents, useDemo } from "@/lib/audio/demo";
 import { tunerEngine } from "@/lib/audio/engine";
 import { PLUCK_DURATION_MS, playChime, playNotes } from "@/lib/audio/tonePlayer";
+import { initialFeedback, shouldChime } from "@/lib/audio/tuneFeedback";
 import { useTuner } from "@/lib/audio/useTuner";
 import { tuningName, useNotation, useT } from "@/lib/i18n/useT";
 import type { MessageKey } from "@/lib/i18n/messages";
@@ -38,15 +39,23 @@ export function TunerScreen() {
     return () => tunerEngine.stop();
   }, [hydrated, tuner.demo]);
 
-  // One short buzz and a soft chime each time a string reaches the in-tune zone.
-  const wasInTune = useRef(false);
+  // One short buzz and a soft chime when a string reaches in tune: once per note
+  // (see tuneFeedback.ts for the debounce rules).
+  const feedback = useRef(initialFeedback());
+  const noteKey = tuner.targetString === null ? null : `${tuner.tuning.id}:${tuner.targetString}`;
+  const silent = tuner.status === "noSignal";
   useEffect(() => {
-    if (inTune && !wasInTune.current && !tuner.demo) {
-      if (haptics) navigator.vibrate?.(40);
-      if (tuneChime) playChime();
-    }
-    wasInTune.current = inTune;
-  }, [inTune, haptics, tuneChime, tuner.demo]);
+    if (tuner.demo) return;
+    const chime = shouldChime(feedback.current, {
+      now: performance.now(),
+      note: noteKey,
+      inTune,
+      silent,
+    });
+    if (!chime) return;
+    if (haptics) navigator.vibrate?.(40);
+    if (tuneChime) playChime();
+  }, [inTune, silent, noteKey, haptics, tuneChime, tuner.demo]);
 
   const onSelectString = (index: number) => {
     selectString(index);

@@ -22,6 +22,8 @@ export interface Settings {
   theme: ThemePref;
   locale: LocalePref;
   a4: number;
+  /** Fine correction (cents) added to every reading, from Settings → Calibration. */
+  calibration: number;
   skin: NeckSkin;
   headstock: HeadstockId;
   tuningId: string;
@@ -54,6 +56,7 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: "system",
   locale: "auto",
   a4: DEFAULT_A4,
+  calibration: 0,
   skin: "maple",
   headstock: "jazz",
   tuningId: "standard",
@@ -97,6 +100,7 @@ export const useSettings = create<Settings & SettingsActions>()(
         theme: s.theme,
         locale: s.locale,
         a4: s.a4,
+        calibration: s.calibration,
         skin: s.skin,
         headstock: s.headstock,
         tuningId: s.tuningId,
