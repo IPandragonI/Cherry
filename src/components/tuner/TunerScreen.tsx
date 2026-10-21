@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronDownIcon, MicIcon, MicOffIcon, PaletteIcon } from "@/components/ui/icons";
 import { sweepCents, useDemo } from "@/lib/audio/demo";
@@ -8,7 +9,7 @@ import { PLUCK_DURATION_MS, playNotes } from "@/lib/audio/tonePlayer";
 import { useTuner } from "@/lib/audio/useTuner";
 import { tuningName, useT } from "@/lib/i18n/useT";
 import type { MessageKey } from "@/lib/i18n/messages";
-import { midiToFrequency } from "@/lib/music/notes";
+import { DEFAULT_A4, midiToFrequency } from "@/lib/music/notes";
 import { useSettings } from "@/store/settings";
 import { useSettingsHydrated } from "@/store/useSettingsHydrated";
 import { Gauge } from "./Gauge";
@@ -91,6 +92,16 @@ export function TunerScreen() {
           </button>
         </div>
       </header>
+
+      {a4 !== DEFAULT_A4 && (
+        // A non-standard reference shifts every reading: make it impossible to miss.
+        <Link
+          href="/settings"
+          className="mx-4 mt-2 flex min-h-8 items-center justify-center rounded-full bg-warning/15 px-3 text-xs font-semibold text-warning"
+        >
+          {t("tuner.a4Warning", { a4 })}
+        </Link>
+      )}
 
       <section className="h-[120px] shrink-0 px-4 py-2">
         <Gauge cents={tuner.cents} inTune={inTune} />
@@ -191,7 +202,7 @@ function MicControl() {
     );
   }
 
-  return <div className="flex h-12 flex-col justify-center px-6">{content}</div>;
+  return content && <div className="flex h-12 flex-col justify-center px-6">{content}</div>;
 }
 
 /** Manual microphone on/off; the ring grows with the input level while listening. */

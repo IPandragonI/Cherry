@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { TrashIcon } from "@/components/ui/icons";
+import { AudioDiagnostic } from "./AudioDiagnostic";
 import { useT } from "@/lib/i18n/useT";
 import { DEFAULT_A4, MAX_A4, MIN_A4 } from "@/lib/music/notes";
 import {
@@ -15,6 +16,7 @@ import { useFavorites } from "@/store/favorites";
 import { useCustomTunings } from "@/store/tunings";
 
 const THEMES: ThemePref[] = ["system", "light", "dark"];
+const A4_PRESETS = [432, 440, 442, 444];
 const STORAGE_KEYS = [SETTINGS_STORAGE_KEY, "cherry-tunings", "cherry-favorites"];
 const TOGGLES = [
   ["refTone", "settings.refTone"],
@@ -86,50 +88,57 @@ export function SettingsScreen() {
 
         <div className="py-3">
           <div className="mb-2 flex items-baseline justify-between">
-            <label htmlFor="a4" className="font-medium">
+            <p id="a4-label" className="font-medium">
               {t("settings.a4")}
-            </label>
-            <span className="font-display text-2xl font-semibold text-primary tabular-nums">
+            </p>
+            <span
+              className={`font-display text-2xl font-semibold tabular-nums ${
+                s.a4 === DEFAULT_A4 ? "text-primary" : "text-warning"
+              }`}
+            >
               {s.a4} Hz
             </span>
           </div>
-          <div className="flex items-center gap-2">
+          {/* Steppers and presets only: a slider here could be nudged while scrolling the
+              page, silently shifting every reading (444 Hz reads −16 cents everywhere). */}
+          <div role="group" aria-labelledby="a4-label" className="flex items-center gap-2">
             <button
               type="button"
               className="btn btn-circle size-11 bg-base-100 btn-ghost text-lg"
               aria-label={`${t("settings.a4")} −1 Hz`}
+              disabled={s.a4 <= MIN_A4}
               onClick={() => s.setA4(s.a4 - 1)}
             >
               −
             </button>
-            <input
-              id="a4"
-              type="range"
-              min={MIN_A4}
-              max={MAX_A4}
-              value={s.a4}
-              onChange={(e) => s.setA4(Number(e.target.value))}
-              className="range min-w-0 flex-1 range-primary range-sm"
-              aria-valuetext={`${s.a4} Hz`}
-            />
+            <div className="grid flex-1 grid-cols-4 gap-1">
+              {A4_PRESETS.map((hz) => (
+                <button
+                  key={hz}
+                  type="button"
+                  aria-pressed={s.a4 === hz}
+                  onClick={() => s.setA4(hz)}
+                  className={`min-h-11 rounded-full text-sm font-semibold tabular-nums transition-colors ${
+                    s.a4 === hz
+                      ? "bg-primary text-primary-content"
+                      : "bg-base-100 hover:bg-base-300"
+                  }`}
+                >
+                  {hz}
+                </button>
+              ))}
+            </div>
             <button
               type="button"
               className="btn btn-circle size-11 bg-base-100 btn-ghost text-lg"
               aria-label={`${t("settings.a4")} +1 Hz`}
+              disabled={s.a4 >= MAX_A4}
               onClick={() => s.setA4(s.a4 + 1)}
             >
               +
             </button>
           </div>
-          {s.a4 !== DEFAULT_A4 && (
-            <button
-              type="button"
-              className="btn mt-1 min-h-11 btn-link px-0 btn-sm"
-              onClick={() => s.setA4(DEFAULT_A4)}
-            >
-              {t("common.reset")} (440 Hz)
-            </button>
-          )}
+          <p className="mt-2 text-xs text-base-content/75">{t("settings.a4.help")}</p>
         </div>
 
         <Row label={t("settings.language")} htmlFor="locale">
@@ -159,6 +168,8 @@ export function SettingsScreen() {
           </Row>
         ))}
       </section>
+
+      <AudioDiagnostic />
 
       <button
         type="button"

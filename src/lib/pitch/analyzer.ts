@@ -19,6 +19,10 @@ export interface AnalyzerOptions {
   minSignalToNoise: number;
   /** …and above this absolute RMS (−80 dBFS), so quiet desktop mics still work. */
   minRms: number;
+  /** Hops ignored after a pluck: the attack is noisy and the string starts sharp. */
+  attackHops: number;
+  /** A hop this many times louder than the previous one marks a new pluck. */
+  onsetRatio: number;
   tracker?: Partial<TrackerOptions>;
 }
 
@@ -33,6 +37,8 @@ export function defaultAnalyzerOptions(sampleRate: number): AnalyzerOptions {
     humHz: [50, 60],
     minSignalToNoise: 3,
     minRms: 0.0001,
+    attackHops: 4,
+    onsetRatio: 2,
   };
 }
 
@@ -53,6 +59,10 @@ export class PitchAnalyzer {
   private sinceLast = 0;
   /** Slowly rising, quickly falling estimate of the background level. */
   private noiseFloor = 0.0002;
+  /** RMS of the most recent hop, to spot plucks. */
+  private lastHopRms = 0;
+  /** Hops still to skip after the latest pluck. */
+  private attackLeft = 0;
   readonly tracker: PitchTracker;
 
   constructor(
@@ -116,7 +126,19 @@ export class PitchAnalyzer {
         : Math.min(rms, this.noiseFloor * 1.0015);
     this.noiseFloor = Math.max(this.noiseFloor, 1e-5);
 
-    const estimate = audible ? this.detector.estimate(this.window) : null;
+    // Pluck detection on the newest hop only (the full window reacts too slowly). During
+    // the attack the waveform is noisy and the string sits a few cents sharp, which made
+    // the bubble jump at every pluck; those hops are skipped (the tracker holds its value).
+    const { hopSize, attackHops, onsetRatio } = this.options;
+    let hopSum = 0;
+    for (let i = windowSize - hopSize; i < windowSize; i++) hopSum += this.window[i] ** 2;
+    const hopRms = Math.sqrt(hopSum / hopSize);
+    if (audible && hopRms > this.lastHopRms * onsetRatio) this.attackLeft = attackHops;
+    this.lastHopRms = hopRms;
+    const settling = this.attackLeft > 0;
+    if (settling) this.attackLeft--;
+
+    const estimate = audible && !settling ? this.detector.estimate(this.window) : null;
     return {
       frequency: this.tracker.update(estimate ? { ...estimate, rms } : null),
       rms,

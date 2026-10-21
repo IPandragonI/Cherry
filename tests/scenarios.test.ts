@@ -25,14 +25,22 @@ function analyze(signal: (i: number) => number, target: number) {
   const samples = Float32Array.from({ length: SR * SECONDS }, (_, i) => signal(i));
   const analyzer = new PitchAnalyzer(SR);
   const cents: number[] = [];
+  // Frame-to-frame movement of the displayed value, only between consecutive readings
+  // (a new pluck after the signal was lost is not a "jump" of the bubble).
+  const steps: number[] = [];
+  let previous: number | null = null;
   let frames = 0;
   for (let i = 0; i < samples.length; i += 128) {
     for (const r of analyzer.push(samples.subarray(i, i + 128))) {
       frames++;
-      if (r.frequency !== null) cents.push(centsBetween(r.frequency, target));
+      const c = r.frequency === null ? null : centsBetween(r.frequency, target);
+      if (c !== null) {
+        cents.push(c);
+        if (previous !== null) steps.push(Math.abs(c - previous));
+      }
+      previous = c;
     }
   }
-  const steps = cents.slice(1).map((c, i) => Math.abs(c - cents[i]));
   return {
     coverage: cents.length / frames,
     worst: Math.max(0, ...cents.map(Math.abs)),
