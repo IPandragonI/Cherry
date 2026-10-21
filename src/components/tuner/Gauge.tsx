@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { FlatIcon, SharpIcon } from "@/components/ui/icons";
-import { displayDeviation } from "@/lib/audio/useTuner";
+import { displayDeviation, gaugePosition } from "@/lib/audio/useTuner";
 import { useT } from "@/lib/i18n/useT";
 import { clampCents } from "@/lib/music/notes";
 
@@ -31,7 +31,7 @@ function formatDeviation(cents: number | null, precise: boolean): string {
 interface GaugeProps {
   cents: number | null;
   inTune: boolean;
-  /** Number in cents; otherwise in tenths of the cents (the marker position is the same). */
+  /** Real scale, in cents; otherwise a compressed scale (see `gaugePosition`). */
   precise: boolean;
 }
 
@@ -58,10 +58,10 @@ export function Gauge({ cents, inTune, precise }: GaugeProps) {
   const inTuneRef = useRef(false);
 
   useEffect(() => {
-    targetRef.current = cents === null ? 0 : clampCents(cents);
+    targetRef.current = cents === null ? 0 : gaugePosition(cents, precise);
     activeRef.current = cents !== null;
     inTuneRef.current = inTune;
-  }, [cents, inTune]);
+  }, [cents, inTune, precise]);
 
   useEffect(() => {
     const field = fieldRef.current;

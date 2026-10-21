@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { displayDeviation, tuneStatus } from "@/lib/audio/useTuner";
+import { displayDeviation, gaugePosition, tuneStatus } from "@/lib/audio/useTuner";
 
 describe("tuneStatus", () => {
   it("classifies deviations", () => {
@@ -40,5 +40,18 @@ describe("displayDeviation", () => {
   it("shows cents in precise mode", () => {
     expect(displayDeviation(-10, true)).toBe(-10);
     expect(displayDeviation(-0.4, true)).toBe(0);
+  });
+});
+
+describe("gaugePosition", () => {
+  it("compresses the centre by default, like popular tuner apps", () => {
+    expect(gaugePosition(-10, false)).toBeCloseTo(-2);
+    expect(gaugePosition(20, false)).toBeCloseTo(8);
+    expect(gaugePosition(-50, false)).toBeCloseTo(-50);
+    expect(gaugePosition(80, false)).toBeCloseTo(50);
+  });
+
+  it("is the real deviation in precise mode", () => {
+    expect(gaugePosition(-10, true)).toBe(-10);
   });
 });

@@ -97,7 +97,7 @@ draws. The analysis is pure TypeScript shared by the worker and the tests:
 5. Display: the last value stays on screen for 4 s after the note fades, and changes under
    1 cent are not shown (`src/lib/audio/readingHold.ts`).
 
-By default the gauge number is in tenths of the cents (−10 cents shows −1, like popular tuner apps) and a string is in tune within ±8 cents (left beyond ±10); **Settings → Precise mode** shows cents and is in tune within ±3 (left beyond ±5). Accuracy tests:
+By default the gauge number is in tenths of the cents (−10 cents shows −1, like popular tuner apps) on a scale compressed around the centre (10 cents off sits where 2 would) and a string is in tune within ±8 cents (left beyond ±10); **Settings → Precise mode** shows cents and is in tune within ±3 (left beyond ±5). Accuracy tests:
 `tests/calibration.test.ts`, `tests/accuracy.test.ts`, `tests/acoustic.test.ts` (an
 in-tune acoustic guitar on all six strings), `tests/scenarios.test.ts`. Real recordings
 saved with **Settings → Diagnostic audio → Record** can be dropped in `tests/recordings/`
