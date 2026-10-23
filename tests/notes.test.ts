@@ -9,7 +9,13 @@ import {
   parseNote,
   solfegeName,
 } from "@/lib/music/notes";
-import { PRESET_TUNINGS, closestString, findTuning, stringLabels } from "@/lib/music/tunings";
+import {
+  PRESET_TUNINGS,
+  closestString,
+  findTuning,
+  stringFrequencies,
+  stringLabels,
+} from "@/lib/music/tunings";
 
 describe("note math", () => {
   it("parses scientific pitch notation", () => {
@@ -53,13 +59,31 @@ describe("note math", () => {
 describe("tunings", () => {
   const standard = findTuning("standard", []);
 
-  it("defines every preset with six strings, low to high", () => {
-    expect(PRESET_TUNINGS).toHaveLength(11);
+  it("defines every preset low to high, with the expected number of strings", () => {
+    const count = (id: string) => findTuning(id, []).strings.length;
     for (const t of PRESET_TUNINGS) {
-      expect(t.strings).toHaveLength(6);
+      // A ukulele's high G (re-entrant tuning) is the one exception to low → high.
+      if (t.id === "ukulele") continue;
       expect([...t.strings].sort((a, b) => a - b)).toEqual(t.strings);
     }
+    expect(
+      PRESET_TUNINGS.filter((t) => t.instrument === "guitar" && t.strings.length === 6),
+    ).toHaveLength(11);
+    expect([count("sevenString"), count("eightString"), count("bass4"), count("bass5")]).toEqual([
+      7, 8, 4, 5,
+    ]);
+    expect(findTuning("ukulele", []).strings.map(formatNote)).toEqual(["G4", "C4", "E4", "A4"]);
     expect(standard.strings.map(formatNote)).toEqual(["E2", "A2", "D3", "G3", "B3", "E4"]);
+  });
+
+  it("applies per-string offsets to the targets", () => {
+    const sweetened = { ...standard, offsets: [0, 0, 0, 0, -3, 0] };
+    const b = stringFrequencies(sweetened, 440)[4];
+    expect(centsBetween(b, midiToFrequency(59, 440))).toBeCloseTo(-3, 6);
+    // A B string 3 cents flat reads 0 against the sweetened target.
+    const match = closestString(b, sweetened.strings, 440, sweetened.offsets);
+    expect(match.index).toBe(4);
+    expect(match.cents).toBeCloseTo(0, 6);
   });
 
   it("labels strings like guitarists do", () => {

@@ -15,7 +15,9 @@ declare const self: ServiceWorkerGlobalScope;
 
 const serwist = new Serwist({
   precacheEntries: self.__SW_MANIFEST,
-  skipWaiting: true,
+  // A new version waits until the user accepts it (see UpdatePrompt): taking over open
+  // pages at once would remove the code chunks they still load from the cache.
+  skipWaiting: false,
   clientsClaim: true,
   navigationPreload: true,
   // Every route is precached by the route handler (see serwist/[path]/route.ts), so no

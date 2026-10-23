@@ -89,7 +89,9 @@ function acousticString(f0: number, seed: number) {
 }
 
 describe("an in-tune acoustic guitar reads in tune on every string", () => {
-  it.each(STRINGS)("%s", (_, midi) => {
+  // Seconds of audio through the full analysis: over Vitest's 5 s default when every test
+  // file runs in parallel.
+  it.each(STRINGS)("%s", { timeout: 20_000 }, (_, midi) => {
     const f0 = midiToFrequency(midi);
     // What a tuner should read: the pitch heard from the stiff string.
     const target = perceivedPitch(f0, STIFFNESS);

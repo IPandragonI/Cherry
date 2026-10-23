@@ -6,6 +6,11 @@ export interface RawPitch {
   clarity: number;
   /** RMS level of the analysed window. */
   rms: number;
+  /**
+   * The same pitch measured over a much shorter span (noisier, but ~150 ms more recent):
+   * followed while the pitch is clearly moving, e.g. a peg being turned.
+   */
+  fast?: number;
 }
 
 export interface TrackerOptions {
@@ -49,6 +54,24 @@ export interface TrackerOptions {
   movingSpeedCents: number;
   /** A pitch can only lock on within this many frames of {@link PitchTracker.arm}. */
   armFrames: number;
+  /** Fast values fitted with a line to tell a steady move from noise. */
+  fitFrames: number;
+  /** Scatter (cents) of the fast values around that line above which they are not
+   *  trusted to drive the display (strings ringing along, a weak signal). */
+  maxFitScatterCents: number;
+  /** The fitted pitch must have left the display by this much (cents)… */
+  motionCents: number;
+  /** …while moving at least this fast (cents per frame), and clearly faster than the
+   *  fit's own uncertainty, for the display to follow it. */
+  motionSpeedCents: number;
+  /** Slower than this (cents per frame), the pitch counts as at rest again… */
+  restSpeedCents: number;
+  /** …and after this many frames at rest the precise value, caught up by then, takes over. */
+  restFrames: number;
+  /** Frames the fast value is projected ahead by (it still trails the strings a little). */
+  leadFrames: number;
+  /** Frames after locking on before a move is followed (the attack is not a move). */
+  motionDelayFrames: number;
 }
 
 export const DEFAULT_TRACKER_OPTIONS: TrackerOptions = {
@@ -72,6 +95,14 @@ export const DEFAULT_TRACKER_OPTIONS: TrackerOptions = {
   trendAlpha: 0.15,
   movingSpeedCents: 1.5,
   armFrames: Infinity,
+  fitFrames: 5,
+  maxFitScatterCents: 1,
+  motionCents: 2.5,
+  motionSpeedCents: 0.5,
+  restSpeedCents: 0.25,
+  restFrames: 8,
+  leadFrames: 2,
+  motionDelayFrames: 6,
 };
 
 export function median(values: readonly number[]): number {
@@ -107,6 +138,20 @@ export class PitchTracker {
   private peakRms = 0;
   /** Frames since the latest pluck. */
   private sinceAttack = Infinity;
+  /** Valid frames since locking on. */
+  private lockedFrames = 0;
+  /** Recent fast values, log2(Hz), oldest first. */
+  private fastValues: number[] = [];
+  /** Consecutive frames with a significant fitted move. */
+  private moveFrames = 0;
+  /** Scatter around the previous fit (log2 units): the noise level before a stop's kink. */
+  private lastScatter = Infinity;
+  /** Fast minus precise value while the pitch rests (the two can differ by a cent or two). */
+  private bias: number | null = null;
+  /** Following a move: `shown` is the fitted fast pitch, projected ahead. */
+  private motion: { shown: number; resting: number } | null = null;
+  /** Display minus precise value when a move ended, faded out over a few frames. */
+  private offset = 0;
 
   constructor(options: Partial<TrackerOptions> = {}) {
     this.options = { ...DEFAULT_TRACKER_OPTIONS, ...options };
@@ -214,7 +259,87 @@ export class PitchTracker {
       const alpha = o.steadyAlpha + (o.movingAlpha - o.steadyAlpha) * deviation;
       this.smoothed += alpha * (target - this.smoothed);
     }
+    this.lockedFrames++;
+    this.follow(raw.fast);
     return this.output();
+  }
+
+  /**
+   * The precise value averages the pitch over ~170 ms, so while a peg is turned it trails
+   * the string by about that much. Once the fast value shows a clear, steady move, the
+   * display follows it instead (relative to where the display was, so any small bias
+   * between the two measurements never shows), until the pitch has rested long enough for
+   * the precise value to catch up; the difference left then fades out.
+   */
+  private follow(fastHz: number | undefined): void {
+    const o = this.options;
+    this.offset *= 0.75;
+    if (fastHz === undefined) return;
+    this.fastValues.push(Math.log2(fastHz));
+    if (this.fastValues.length > o.fitFrames) this.fastValues.shift();
+    const n = this.fastValues.length;
+    if (n < o.fitFrames) return;
+
+    // Least-squares line through the recent fast values: its end is the current pitch
+    // without the delay of an average, its slope the speed, and the scatter around it
+    // says how much of that speed could be noise.
+    const xMean = (n - 1) / 2;
+    const yMean = this.fastValues.reduce((a, b) => a + b, 0) / n;
+    let sxy = 0;
+    let sxx = 0;
+    this.fastValues.forEach((y, x) => {
+      sxy += (x - xMean) * (y - yMean);
+      sxx += (x - xMean) ** 2;
+    });
+    const slope = sxy / sxx;
+    let residual = 0;
+    this.fastValues.forEach((y, x) => (residual += (y - yMean - slope * (x - xMean)) ** 2));
+    const scatter = Math.sqrt(residual / (n - 2));
+    const speed = Math.abs(slope) * 1200;
+    const now = yMean + slope * xMean;
+    const significant =
+      scatter * 1200 < o.maxFitScatterCents &&
+      speed > o.motionSpeedCents &&
+      Math.abs(slope) > 4 * (scatter / Math.sqrt(sxx));
+    // The newest value falling short of the line (by more than the noise did so far)
+    // means the move is ending, the peg stopped: no projection ahead then, or the display
+    // would overshoot.
+    const newest = this.fastValues[n - 1];
+    const shortfall = (now - newest) * Math.sign(slope);
+    const stopping = shortfall > Math.max(0.15 * Math.abs(slope), 1.5 * this.lastScatter);
+    this.lastScatter = scatter;
+    const projected = stopping ? newest : now + o.leadFrames * slope;
+
+    if (this.motion) {
+      const m = this.motion;
+      m.shown = projected;
+      m.resting = significant && speed >= o.restSpeedCents ? 0 : m.resting + 1;
+      if (m.resting >= o.restFrames && this.smoothed !== null) {
+        this.offset = this.display() - this.smoothed;
+        this.motion = null;
+        this.bias = null;
+        this.moveFrames = 0;
+      }
+      return;
+    }
+    if (!significant && this.smoothed !== null) {
+      const bias = now - this.smoothed;
+      this.bias = this.bias === null ? bias : this.bias + 0.2 * (bias - this.bias);
+    }
+    this.moveFrames = significant ? this.moveFrames + 1 : 0;
+    if (
+      this.bias !== null &&
+      this.lockedFrames > o.motionDelayFrames &&
+      this.moveFrames >= 2 &&
+      Math.abs(projected - this.bias - this.display()) * 1200 > o.motionCents
+    ) {
+      this.motion = { shown: projected, resting: 0 };
+    }
+  }
+
+  private display(): number {
+    if (this.motion) return this.motion.shown - this.bias!;
+    return this.smoothed! + this.offset;
   }
 
   /** The measurement became more precise: forget the values so far, but stay locked. */
@@ -226,6 +351,7 @@ export class PitchTracker {
     this.trend = 0;
     this.lastTarget = null;
     this.catchingUp = false;
+    this.offset = 0;
   }
 
   reset(): void {
@@ -239,9 +365,16 @@ export class PitchTracker {
     this.candidates = [];
     this.medians = [];
     this.peakRms = 0;
+    this.lockedFrames = 0;
+    this.fastValues = [];
+    this.moveFrames = 0;
+    this.lastScatter = Infinity;
+    this.bias = null;
+    this.motion = null;
+    this.offset = 0;
   }
 
   private output(): number | null {
-    return this.locked && this.smoothed !== null ? 2 ** this.smoothed : null;
+    return this.locked && this.smoothed !== null ? 2 ** this.display() : null;
   }
 }

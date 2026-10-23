@@ -285,8 +285,21 @@ export class PitchAnalyzer {
         this.tracker.resettle();
       }
     }
+    // The same partials over two hops of phase in the short spectrum: noisier, but only
+    // ~55 ms behind the strings, for following a peg being turned (see PitchTracker).
+    const fast =
+      estimate && coarse && !outlier && this.quick.ready
+        ? this.quick.refine(coarse.frequency, 2)
+        : null;
+    const fastOk =
+      fast !== null &&
+      fast.support >= 3 &&
+      fast.agreement >= 0.5 &&
+      cents(fast.frequency, estimate!.frequency) < 60;
     return {
-      frequency: this.tracker.update(estimate ? { ...estimate, rms } : null),
+      frequency: this.tracker.update(
+        estimate ? { ...estimate, rms, fast: fastOk ? fast.frequency : undefined } : null,
+      ),
       rms,
     };
   }

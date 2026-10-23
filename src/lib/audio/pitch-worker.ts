@@ -6,13 +6,19 @@
  * next.config.ts.
  */
 import { PitchAnalyzer, type PitchReading } from "../pitch/analyzer";
+import type { AnalysisRange } from "../pitch/range";
 
 /** Messages from the page. */
 export type WorkerCommand =
-  { type: "setup"; port: MessagePort; sampleRate: number } | { type: "record"; seconds: number };
+  | { type: "setup"; port: MessagePort; sampleRate: number; range: AnalysisRange }
+  /** Another tuning (e.g. a bass): listen in another band. */
+  | { type: "configure"; range: AnalysisRange }
+  | { type: "record"; seconds: number };
 
 /** Messages to the page. */
 export type WorkerEvent =
+  /** The script loaded and runs. */
+  | { type: "ready" }
   | ({ type: "reading" } & PitchReading)
   | { type: "recording"; samples: Float32Array; sampleRate: number };
 
@@ -22,7 +28,15 @@ const scope = self as unknown as {
 };
 
 let sampleRate = 48000;
+let analyzer: PitchAnalyzer | null = null;
 let recording: { buffer: Float32Array; filled: number } | null = null;
+
+function createAnalyzer(range: AnalysisRange) {
+  analyzer = new PitchAnalyzer(sampleRate, {
+    highpassHz: range.highpassHz,
+    tracker: { minFrequency: range.minFrequency, maxFrequency: range.maxFrequency },
+  });
+}
 
 function capture(chunk: Float32Array) {
   if (!recording) return;
@@ -41,10 +55,21 @@ scope.onmessage = ({ data }) => {
     recording = { buffer: new Float32Array(Math.round(data.seconds * sampleRate)), filled: 0 };
     return;
   }
+  if (data.type === "configure") {
+    createAnalyzer(data.range);
+    return;
+  }
   sampleRate = data.sampleRate;
-  const analyzer = new PitchAnalyzer(sampleRate);
-  data.port.onmessage = (e: MessageEvent<Float32Array>) => {
+  createAnalyzer(data.range);
+  const port = data.port;
+  port.onmessage = (e: MessageEvent<Float32Array>) => {
     capture(e.data);
-    for (const reading of analyzer.push(e.data)) scope.postMessage({ type: "reading", ...reading });
+    for (const reading of analyzer!.push(e.data)) {
+      scope.postMessage({ type: "reading", ...reading });
+    }
+    // Back to the worklet's pool (the analyzer copied what it needs).
+    port.postMessage(e.data, [e.data.buffer]);
   };
 };
+
+scope.postMessage({ type: "ready" });

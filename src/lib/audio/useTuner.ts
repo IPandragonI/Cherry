@@ -1,21 +1,22 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 import { create } from "zustand";
 import {
   centsBetween,
   clampCents,
   midiToFrequency,
+  nearestNote,
   noteName,
   octaveOf,
   solfegeName,
   type NoteName,
 } from "@/lib/music/notes";
-import { closestString, findTuning, type Tuning } from "@/lib/music/tunings";
+import { closestString, findTuning, stringFrequencies, type Tuning } from "@/lib/music/tunings";
 import { useSettings, type TunerMode } from "@/store/settings";
 import { useCustomTunings } from "@/store/tunings";
 import { useDemo } from "./demo";
-import { tunerEngine, type MicStatus } from "./engine";
+import { useEngine, type MicStatus } from "./engine";
 
 /** Tolerant on purpose: a guitar string within this reads in tune. */
 export const IN_TUNE_CENTS = 8;
@@ -36,11 +37,12 @@ export interface TunerState {
   mode: TunerMode;
   demo: boolean;
   mic: MicStatus;
-  /** Microphone input level (0 when not listening). */
-  level: number;
-  /** Index of the string being tuned (0 = lowest), null before anything was heard in auto. */
+  /**
+   * Index of the string being tuned (0 = lowest); null before anything was heard in auto,
+   * and always in chromatic mode.
+   */
   targetString: number | null;
-  /** Target string's note. */
+  /** Target string's note (chromatic mode: the closest note). */
   note: NoteName | null;
   octave: number | null;
   solfege: string | null;
@@ -101,34 +103,62 @@ export function gaugePosition(cents: number, precise: boolean): number {
   return Math.sign(cents) * 50 * (curve(units) / curve(MAX_DISPLAY));
 }
 
+/**
+ * Strings that reached in tune since the tuning was chosen (or the list was cleared), for
+ * the "all strings tuned" overview. Kept outside the components so it survives tab changes.
+ */
+export const useTunedStrings = create<{
+  /** Tuning the list belongs to (another tuning starts afresh). */
+  tuningKey: string;
+  tuned: number[];
+  mark: (tuningKey: string, index: number) => void;
+  clear: () => void;
+}>()((set) => ({
+  tuningKey: "",
+  tuned: [],
+  mark: (tuningKey, index) =>
+    set((s) => {
+      const tuned = s.tuningKey === tuningKey ? s.tuned : [];
+      return tuned.includes(index) ? s : { tuningKey, tuned: [...tuned, index] };
+    }),
+  clear: () => set({ tuned: [] }),
+}));
+
+/** Identifies a tuning with its exact targets (editing a custom tuning starts afresh). */
+export const tuningKey = (tuning: Tuning, a4: number) =>
+  `${tuning.id}:${tuning.strings.join(",")}:${tuning.offsets?.join(",") ?? ""}:${a4}`;
+
 /** Single source of truth for the tuner UI: microphone (or demo) input + settings. */
 export function useTuner(): TunerState {
   const { tuningId, a4, mode, demo, precise } = useSettings();
   const selected = useSettings((s) => s.selectedString);
   const custom = useCustomTunings((s) => s.custom);
   const demoCents = useDemo((s) => s.cents);
-  const engine = useSyncExternalStore(
-    tunerEngine.subscribe,
-    tunerEngine.getSnapshot,
-    tunerEngine.getServerSnapshot,
-  );
+  // Only what the tuner shows: the input level changes with every reading and would
+  // re-render everything that uses this hook.
+  const mic = useEngine((s) => s.status);
+  const heard = useEngine((s) => s.frequency);
 
   const tuning = findTuning(tuningId, custom);
   const strings = tuning.strings;
+  const targets = stringFrequencies(tuning, a4);
   const selectedString = Math.min(selected, strings.length - 1);
 
-  const frequency = demo
-    ? midiToFrequency(strings[selectedString], a4) * 2 ** (demoCents / 1200)
-    : engine.frequency;
+  const frequency = demo ? targets[selectedString] * 2 ** (demoCents / 1200) : heard;
 
   let detected: number | null = null;
   let cents: number | null = null;
+  let chromaticMidi: number | null = null;
   if (frequency !== null) {
     if (mode === "manual") {
       detected = selectedString;
-      cents = centsBetween(frequency, midiToFrequency(strings[selectedString], a4));
+      cents = centsBetween(frequency, targets[selectedString]);
+    } else if (mode === "chromatic") {
+      const nearest = nearestNote(frequency, a4);
+      chromaticMidi = nearest.midi;
+      cents = nearest.cents;
     } else {
-      const match = closestString(frequency, strings, a4);
+      const match = closestString(frequency, strings, a4, tuning.offsets);
       detected = match.index;
       cents = match.cents;
     }
@@ -141,24 +171,29 @@ export function useTuner(): TunerState {
   }, [detected]);
 
   const remembered = lastDetected !== null && lastDetected < strings.length ? lastDetected : null;
-  const targetString = mode === "manual" ? selectedString : (detected ?? remembered);
-  const midi = targetString === null ? null : strings[targetString];
+  const targetString =
+    mode === "chromatic" ? null : mode === "manual" ? selectedString : (detected ?? remembered);
+  const midi =
+    mode === "chromatic" ? chromaticMidi : targetString === null ? null : strings[targetString];
 
   const [wasInTune, setWasInTune] = useState(false);
   const status = tuneStatus(cents, wasInTune, precise);
   if ((status === "inTune") !== wasInTune) setWasInTune(status === "inTune");
 
+  let targetFrequency: number | null = null;
+  if (targetString !== null) targetFrequency = targets[targetString];
+  else if (midi !== null) targetFrequency = midiToFrequency(midi, a4);
+
   return {
     tuning,
     mode,
     demo,
-    mic: engine.status,
-    level: engine.level,
+    mic,
     targetString,
     note: midi === null ? null : noteName(midi),
     octave: midi === null ? null : octaveOf(midi),
     solfege: midi === null ? null : solfegeName(midi),
-    targetFrequency: midi === null ? null : midiToFrequency(midi, a4),
+    targetFrequency,
     frequency,
     cents,
     status,

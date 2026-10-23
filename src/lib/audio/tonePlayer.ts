@@ -1,14 +1,8 @@
 import { unlockPlayback } from "./audioSession";
 import { karplusStrong } from "./karplus";
+import { outputContext as context } from "./output";
 
-let ctx: AudioContext | null = null;
 const buffers = new Map<string, AudioBuffer>();
-
-function context(): AudioContext {
-  ctx ??= new AudioContext({ latencyHint: "interactive" });
-  if (ctx.state === "suspended") void ctx.resume();
-  return ctx;
-}
 
 function pluckBuffer(audio: AudioContext, frequency: number): AudioBuffer {
   const key = frequency.toFixed(3);
@@ -66,4 +60,47 @@ export function playChime(): void {
     osc.start(start);
     osc.stop(start + 0.65);
   }
+}
+
+let drone: { stop: () => void } | null = null;
+/** Fade in and out (s): no click when the drone starts or stops. */
+const DRONE_FADE_S = 0.08;
+
+/**
+ * Sustained reference note, to tune by ear against it (beats slow down and vanish as the
+ * string reaches the note). A few soft harmonics make it easy to hear on a phone speaker.
+ * Replaces any drone already sounding. Call from a user gesture.
+ */
+export function startDrone(frequency: number): void {
+  stopDrone();
+  const audio = context();
+  unlockPlayback(audio);
+  const out = audio.createGain();
+  const start = audio.currentTime + 0.01;
+  out.gain.setValueAtTime(0, start);
+  out.gain.linearRampToValueAtTime(0.18, start + DRONE_FADE_S);
+  out.connect(audio.destination);
+  const oscillators = [1, 2, 3].map((harmonic, i) => {
+    const osc = audio.createOscillator();
+    const level = audio.createGain();
+    osc.frequency.value = frequency * harmonic;
+    level.gain.value = [1, 0.35, 0.15][i];
+    osc.connect(level).connect(out);
+    osc.start(start);
+    return osc;
+  });
+  drone = {
+    stop: () => {
+      const end = audio.currentTime;
+      out.gain.cancelScheduledValues(end);
+      out.gain.setValueAtTime(out.gain.value, end);
+      out.gain.linearRampToValueAtTime(0, end + DRONE_FADE_S);
+      oscillators.forEach((osc) => osc.stop(end + DRONE_FADE_S + 0.02));
+    },
+  };
+}
+
+export function stopDrone(): void {
+  drone?.stop();
+  drone = null;
 }

@@ -7,7 +7,7 @@ test("desktop: listens automatically and hears a guitar on the right input chann
   await page.addInitScript(() =>
     localStorage.setItem(
       "cherry-settings",
-      JSON.stringify({ state: { locale: "fr" }, version: 1 }),
+      JSON.stringify({ state: { locale: "fr", micIntroSeen: true }, version: 1 }),
     ),
   );
   await page.goto("/");
@@ -25,7 +25,7 @@ test("mic toggle turns listening off and back on", async ({ page }) => {
   await page.addInitScript(() =>
     localStorage.setItem(
       "cherry-settings",
-      JSON.stringify({ state: { locale: "fr" }, version: 1 }),
+      JSON.stringify({ state: { locale: "fr", micIntroSeen: true }, version: 1 }),
     ),
   );
   await page.goto("/");
@@ -59,7 +59,7 @@ test("listening resumes after the app is hidden and shown again", async ({ page 
   await page.addInitScript(() =>
     localStorage.setItem(
       "cherry-settings",
-      JSON.stringify({ state: { locale: "fr" }, version: 1 }),
+      JSON.stringify({ state: { locale: "fr", micIntroSeen: true }, version: 1 }),
     ),
   );
   await page.goto("/");
@@ -87,7 +87,7 @@ test("audio diagnostic reports the device and the offset at A4 = 440 Hz", async 
   await page.addInitScript(() =>
     localStorage.setItem(
       "cherry-settings",
-      JSON.stringify({ state: { locale: "fr" }, version: 1 }),
+      JSON.stringify({ state: { locale: "fr", micIntroSeen: true }, version: 1 }),
     ),
   );
   await page.goto("/settings");
@@ -101,7 +101,10 @@ test("a non-standard reference pitch is flagged and shifts the reading", async (
   await page.addInitScript(() =>
     localStorage.setItem(
       "cherry-settings",
-      JSON.stringify({ state: { locale: "fr", a4: 446, precise: true }, version: 1 }),
+      JSON.stringify({
+        state: { locale: "fr", micIntroSeen: true, a4: 446, precise: true },
+        version: 1,
+      }),
     ),
   );
   await page.goto("/");
@@ -116,7 +119,7 @@ test("the diagnostic records the raw input as a WAV file", async ({ page }) => {
   await page.addInitScript(() =>
     localStorage.setItem(
       "cherry-settings",
-      JSON.stringify({ state: { locale: "fr" }, version: 2 }),
+      JSON.stringify({ state: { locale: "fr", micIntroSeen: true }, version: 2 }),
     ),
   );
   await page.goto("/settings");
@@ -128,4 +131,21 @@ test("the diagnostic records the raw input as a WAV file", async ({ page }) => {
   expect(file.suggestedFilename()).toMatch(/^cherry-.*\.wav$/);
   const { size } = statSync(await file.path());
   expect(size).toBeGreaterThan(6 * 44100 * 2); // 6 s of 16-bit audio
+});
+
+test("first visit explains the microphone before asking for it", async ({ page }) => {
+  await page.addInitScript(() =>
+    localStorage.setItem(
+      "cherry-settings",
+      JSON.stringify({ state: { locale: "fr" }, version: 4 }),
+    ),
+  );
+  await page.goto("/");
+  const root = page.locator("[data-mic-status]");
+  await expect(page.getByText("Le micro, pour entendre vos cordes")).toBeVisible();
+  // Not listening yet: no permission prompt before the user chose to.
+  await expect(root).toHaveAttribute("data-mic-status", "idle");
+  await page.getByRole("button", { name: "Activer le micro" }).click();
+  await expect(root).toHaveAttribute("data-mic-status", "running", { timeout: 20_000 });
+  await expect(page.getByText(/110,6 Hz/)).toBeVisible({ timeout: 20_000 });
 });

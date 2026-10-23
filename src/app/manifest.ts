@@ -3,10 +3,11 @@ import type { MetadataRoute } from "next";
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",
-    name: "Cherry — Accordeur & accords",
+    // One manifest serves both languages: the name is the brand, the description bilingual.
+    name: "Cherry",
     short_name: "Cherry",
-    description: "Accordeur de guitare, bibliothèque d'accords et trouveur d'accords, hors ligne.",
-    lang: "fr",
+    description:
+      "Accordeur, accords et métronome, hors ligne · Tuner, chords and metronome, offline.",
     start_url: "/",
     scope: "/",
     display: "standalone",

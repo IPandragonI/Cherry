@@ -11,8 +11,9 @@ const MARKER_W = 48;
 const MARKER_H = 56;
 /** Inset of the ±50 cent positions from the field edges, leaving room for ♭ / ♯. */
 const EDGE = 34;
-/** Marker glide (ms): a short critically damped spring, quick yet without jerks. */
-const GLIDE_MS = 50;
+/** Marker glide (ms): a critically damped spring, just long enough to smooth the steps
+ *  between readings (one every ~21 ms); it trails a moving pitch by about this much. */
+const GLIDE_MS = 25;
 /** Must match the dot-field scroll in globals.css (one 14 px row every 1.1 s). */
 const SCROLL_PX_PER_MS = 14 / 1100;
 /** A trail point fades out over this long once it is emitted. */
@@ -62,6 +63,8 @@ export function Gauge({ cents, inTune, precise, noteKey }: GaugeProps) {
   const inTuneRef = useRef(false);
   /** Set when the marker must jump to its target instead of gliding (new note heard). */
   const snapRef = useRef(false);
+  /** Restarts the animation loop, which stops once everything has come to rest. */
+  const wakeRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     targetRef.current = cents === null ? 0 : gaugePosition(cents, precise);
@@ -69,6 +72,7 @@ export function Gauge({ cents, inTune, precise, noteKey }: GaugeProps) {
     if (cents !== null && !activeRef.current) snapRef.current = true;
     activeRef.current = cents !== null;
     inTuneRef.current = inTune;
+    wakeRef.current();
   }, [cents, inTune, precise]);
 
   // Another string: no glide across the gauge from the previous note.
@@ -106,7 +110,8 @@ export function Gauge({ cents, inTune, precise, noteKey }: GaugeProps) {
     let position = targetRef.current;
     let velocity = 0;
     let last = performance.now();
-    let frame = requestAnimationFrame(function tick(now) {
+    let frame = 0;
+    const tick = (now: number) => {
       const dt = Math.min(64, now - last);
       last = now;
       const target = targetRef.current;
@@ -168,10 +173,24 @@ export function Gauge({ cents, inTune, precise, noteKey }: GaugeProps) {
         ctx.globalAlpha = 1;
       }
 
+      // Nothing heard, marker at rest, trail gone: stop drawing (battery) until woken.
+      const resting =
+        !activeRef.current &&
+        trail.length === 0 &&
+        Math.abs(position - targetRef.current) < 0.01 &&
+        Math.abs(velocity) < 1e-4;
+      frame = resting ? 0 : requestAnimationFrame(tick);
+    };
+    const wake = () => {
+      if (frame) return;
+      last = performance.now();
       frame = requestAnimationFrame(tick);
-    });
+    };
+    wakeRef.current = wake;
+    wake();
     return () => {
       cancelAnimationFrame(frame);
+      wakeRef.current = () => {};
       observer.disconnect();
     };
   }, []);

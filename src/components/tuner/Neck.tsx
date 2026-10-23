@@ -1,6 +1,6 @@
 "use client";
 
-import { useId } from "react";
+import { memo, useId } from "react";
 import type { NeckSkin } from "@/store/settings";
 import {
   CX,
@@ -55,6 +55,8 @@ export interface PegLabels {
   ariaLabels: string[];
   selected: number | null;
   onSelect: (index: number) => void;
+  /** Strings already brought in tune: a small tick on their indicator. */
+  tuned?: number[];
 }
 
 interface NeckProps {
@@ -97,7 +99,11 @@ function pegPositions(model: HeadstockModel, strings: number, mirrored: boolean)
   });
 }
 
-export function Neck({
+/**
+ * Memoized: the tuner re-renders with every reading (~47 per second) while the neck only
+ * changes with the target string, the in-tune state and the settings.
+ */
+export const Neck = memo(function Neck({
   skin,
   model: modelId,
   strings,
@@ -370,12 +376,34 @@ export function Neck({
             >
               {peg.label}
             </text>
+            {pegLabels?.tuned?.includes(peg.index) && (
+              <g
+                transform={`translate(${peg.x + peg.r * 0.72},${peg.y - peg.r * 0.72}) scale(${peg.r / 24})`}
+                className="pointer-events-none"
+                aria-hidden="true"
+              >
+                <circle
+                  r={9}
+                  fill="var(--color-success)"
+                  stroke="var(--color-base-100)"
+                  strokeWidth={2}
+                />
+                <path
+                  d="M-4 0.5 l2.8 2.8 l5.2 -5.6"
+                  fill="none"
+                  stroke="var(--color-success-content)"
+                  strokeWidth={2.4}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </g>
+            )}
           </g>
         );
       })}
     </svg>
   );
-}
+});
 
 /** Bell-shaped truss-rod cover: rounded narrow top, concave flanks, wide base. */
 function TrussCover({ top, bottom, width }: NonNullable<HeadstockModel["truss"]>) {

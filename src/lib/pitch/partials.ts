@@ -129,8 +129,11 @@ export class PartialRefiner {
     this.count = 0;
   }
 
-  /** Measured partials of a note whose fundamental is near `coarse` Hz. */
-  partials(coarse: number): PartialEstimate[] {
+  /**
+   * Measured partials of a note whose fundamental is near `coarse` Hz. `maxLag` caps the
+   * phase-comparison interval (hops): shorter is noisier but follows a moving pitch sooner.
+   */
+  partials(coarse: number, maxLag = this.maxLag): PartialEstimate[] {
     const o = this.options;
     const binHz = this.sampleRate / this.size;
     const span = 2 ** (o.searchCents / 1200);
@@ -154,7 +157,7 @@ export class PartialRefiner {
         }
       }
       if (peak < 0) continue;
-      const frequency = this.partialFrequency(peak, binHz);
+      const frequency = this.partialFrequency(peak, binHz, maxLag);
       if (Math.abs(1200 * Math.log2(frequency / target)) <= o.searchCents) {
         found.push({
           harmonic: k,
@@ -169,8 +172,8 @@ export class PartialRefiner {
   }
 
   /** Precise perceived pitch, or null if no usable partial was found. */
-  refine(coarse: number): RefinedPitch | null {
-    const partials = this.partials(coarse);
+  refine(coarse: number, maxLag = this.maxLag): RefinedPitch | null {
+    const partials = this.partials(coarse, maxLag);
     if (partials.length === 0) return null;
     // Inverse-variance weights: a partial's frequency error shrinks with its SNR, and
     // dividing by k shrinks it k times more for the fundamental.
@@ -239,11 +242,11 @@ export class PartialRefiner {
   }
 
   /** Phase-vocoder frequency of the partial peaking at `bin`; falls back to interpolation. */
-  private partialFrequency(bin: number, binHz: number): number {
+  private partialFrequency(bin: number, binHz: number, maxLag: number): number {
     const interpolated = this.interpolate(bin) * binHz;
     // A frame belongs to the current note only once its whole window comes after the
     // last reset (pluck), i.e. `maxLag` hops later; never compare with an older one.
-    const longest = Math.min(this.maxLag, this.count - this.maxLag - 1);
+    const longest = Math.min(maxLag, this.maxLag, this.count - this.maxLag - 1);
     if (longest < 1 || bin > this.maxBin) return interpolated;
     const now = this.history[this.head];
     const phaseNow = Math.atan2(now[2 * bin + 1], now[2 * bin]);

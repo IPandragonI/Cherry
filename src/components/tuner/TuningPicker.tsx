@@ -5,13 +5,17 @@ import { Sheet } from "@/components/ui/Sheet";
 import { PencilIcon, PlusIcon, TrashIcon } from "@/components/ui/icons";
 import { tuningName, useNotation, useT } from "@/lib/i18n/useT";
 import { noteLabel, type Notation } from "@/lib/music/notes";
-import { DEFAULT_TUNING, PRESET_TUNINGS, type Tuning } from "@/lib/music/tunings";
+import { DEFAULT_TUNING, INSTRUMENTS, PRESET_TUNINGS, type Tuning } from "@/lib/music/tunings";
 import { useSettings } from "@/store/settings";
 import { useCustomTunings } from "@/store/tunings";
 import { TuningEditor } from "./TuningEditor";
 
 export const tuningNotes = (tuning: Tuning, notation: Notation = "letters") =>
   tuning.strings.map((m) => noteLabel(m, notation)).join(" ");
+
+/** `crypto.randomUUID` only exists in secure contexts (not plain-HTTP LAN testing). */
+const newTuningId = () =>
+  `custom-${globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}`;
 
 interface TuningPickerProps {
   open: boolean;
@@ -96,9 +100,9 @@ export function TuningPicker({ open, onClose, current }: TuningPickerProps) {
           key={editing.id}
           initial={editing}
           onCancel={() => setEditing(null)}
-          onSave={({ name, strings }) => {
-            const id = editing.custom ? editing.id : `custom-${crypto.randomUUID()}`;
-            save({ id, name, strings, custom: true });
+          onSave={(edited) => {
+            const id = editing.custom ? editing.id : newTuningId();
+            save({ id, ...edited, custom: true });
             setSettings({ tuningId: id });
             setEditing(null);
             onClose();
@@ -106,12 +110,16 @@ export function TuningPicker({ open, onClose, current }: TuningPickerProps) {
         />
       ) : (
         <div className="space-y-4">
-          <section>
-            <h3 className="mb-1 px-1 text-xs font-semibold tracking-wide text-base-content/75 uppercase">
-              {t("tunings.presets")}
-            </h3>
-            <ul className="space-y-0.5">{PRESET_TUNINGS.map(row)}</ul>
-          </section>
+          {INSTRUMENTS.map((instrument) => (
+            <section key={instrument}>
+              <h3 className="mb-1 px-1 text-xs font-semibold tracking-wide text-base-content/75 uppercase">
+                {t(`tunings.instrument.${instrument}`)}
+              </h3>
+              <ul className="space-y-0.5">
+                {PRESET_TUNINGS.filter((p) => (p.instrument ?? "guitar") === instrument).map(row)}
+              </ul>
+            </section>
+          ))}
           <section>
             <h3 className="mb-1 px-1 text-xs font-semibold tracking-wide text-base-content/75 uppercase">
               {t("tunings.custom")}

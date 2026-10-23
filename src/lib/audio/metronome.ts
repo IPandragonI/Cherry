@@ -1,10 +1,34 @@
 import { create } from "zustand";
 import { unlockPlayback } from "./audioSession";
+import { outputContext } from "./output";
+import { keepScreenAwake } from "./screenAwake";
 import { MAX_BPM, MIN_BPM } from "@/store/settings";
 
 /** How far ahead clicks are queued on the audio clock, and how often the queue is topped up. */
 const LOOKAHEAD_S = 0.12;
+/** While the page is hidden, timers may only fire once a second: queue further ahead. */
+const HIDDEN_LOOKAHEAD_S = 2.5;
 const TICK_MS = 25;
+
+/**
+ * Calls `tick` every `ms`. From a worker when possible: the page's own timers are slowed
+ * to once a second (or less) in a background tab or with the screen off, which made the
+ * clicks stop; a worker's timers keep running.
+ */
+function startTicker(tick: () => void, ms: number): () => void {
+  try {
+    const source = `let t;onmessage=e=>{clearInterval(t);if(e.data>0)t=setInterval(()=>postMessage(0),e.data)}`;
+    const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+    const worker = new Worker(url);
+    URL.revokeObjectURL(url);
+    worker.onmessage = tick;
+    worker.postMessage(ms);
+    return () => worker.terminate();
+  } catch {
+    const timer = setInterval(tick, ms);
+    return () => clearInterval(timer);
+  }
+}
 const CLICK_S = 0.05;
 
 export type MetronomeSound = "click" | "mechanical" | "beep" | "woodblock" | "rimshot" | "kick";
@@ -61,7 +85,11 @@ interface MetronomeState {
 class Metronome {
   readonly store = create<MetronomeState>()(() => ({ playing: false, beat: -1 }));
   private ctx: AudioContext | null = null;
-  private timer: ReturnType<typeof setInterval> | null = null;
+  /** Stops the scheduling ticker; null when stopped. */
+  private stopTicker: (() => void) | null = null;
+  /** Everything queued while playing goes through it, so stopping silences it at once. */
+  private master: GainNode | null = null;
+  private releaseScreen: (() => void) | null = null;
   private raf = 0;
   private nextTime = 0;
   private nextBeat = 0;
@@ -70,7 +98,6 @@ class Metronome {
   private beats = 4;
   private sound: MetronomeSound = "click";
   private noise: AudioBuffer | null = null;
-  private wakeLock: WakeLockSentinel | null = null;
 
   configure(bpm: number, beatsPerBar: number, sound: MetronomeSound) {
     this.bpm = bpm;
@@ -81,43 +108,48 @@ class Metronome {
 
   /** One accented hit of a sound, e.g. when choosing it (call from a user gesture). */
   preview(sound: MetronomeSound) {
-    this.ctx ??= new AudioContext({ latencyHint: "interactive" });
+    this.ctx = outputContext();
     unlockPlayback(this.ctx);
     this.hit(sound, this.ctx.currentTime + 0.03, true);
   }
 
   /** Call from a user gesture (audio may only start then). */
   start() {
-    if (this.timer) return;
-    this.ctx ??= new AudioContext({ latencyHint: "interactive" });
-    unlockPlayback(this.ctx);
-    this.nextTime = this.ctx.currentTime + 0.06;
+    if (this.stopTicker) return;
+    const ctx = outputContext();
+    this.ctx = ctx;
+    unlockPlayback(ctx);
+    this.master = ctx.createGain();
+    this.master.connect(ctx.destination);
+    this.nextTime = ctx.currentTime + 0.06;
     this.nextBeat = 0;
     this.queue = [];
-    this.timer = setInterval(() => this.schedule(), TICK_MS);
+    this.stopTicker = startTicker(() => this.schedule(), TICK_MS);
     this.schedule();
     this.store.setState({ playing: true });
     this.raf = requestAnimationFrame(this.draw);
-    void navigator.wakeLock
-      ?.request("screen")
-      .then((lock) => (this.wakeLock = lock))
-      .catch(() => {});
+    // Taken again whenever the browser drops it (the page was hidden, battery saver…).
+    this.releaseScreen = keepScreenAwake();
   }
 
   stop() {
-    if (this.timer) clearInterval(this.timer);
-    this.timer = null;
+    this.stopTicker?.();
+    this.stopTicker = null;
+    // Clicks already queued ahead (up to seconds while hidden) must not play on.
+    this.master?.disconnect();
+    this.master = null;
     cancelAnimationFrame(this.raf);
     this.queue = [];
     this.store.setState({ playing: false, beat: -1 });
-    void this.wakeLock?.release().catch(() => {});
-    this.wakeLock = null;
+    this.releaseScreen?.();
+    this.releaseScreen = null;
   }
 
   private schedule() {
     const ctx = this.ctx;
     if (!ctx) return;
-    while (this.nextTime < ctx.currentTime + LOOKAHEAD_S) {
+    const ahead = document.visibilityState === "visible" ? LOOKAHEAD_S : HIDDEN_LOOKAHEAD_S;
+    while (this.nextTime < ctx.currentTime + ahead) {
       this.click(this.nextTime, this.nextBeat === 0);
       this.queue.push({ time: this.nextTime, beat: this.nextBeat });
       this.nextTime += 60 / this.bpm;
@@ -131,8 +163,10 @@ class Metronome {
 
   private hit(sound: MetronomeSound, time: number, accent: boolean) {
     const ctx = this.ctx!;
+    // While playing, through the master bus (silenced on stop); a preview plays directly.
+    const dest = this.master ?? ctx.destination;
     const out = ctx.createGain();
-    out.connect(ctx.destination);
+    out.connect(dest);
     // Fast attack, exponential decay to silence.
     const envelope = (peak: number, decay: number) => {
       out.gain.setValueAtTime(0.0001, time);
@@ -170,7 +204,7 @@ class Metronome {
       tone.frequency.value = 3000;
       beaterGain.gain.setValueAtTime(0.25, time);
       beaterGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.012);
-      beater.connect(tone).connect(beaterGain).connect(ctx.destination);
+      beater.connect(tone).connect(beaterGain).connect(dest);
       beater.start(time);
       beater.stop(time + 0.02);
       return;
@@ -203,7 +237,7 @@ class Metronome {
           ring.gain.setValueAtTime(0.0001, time);
           ring.gain.exponentialRampToValueAtTime(level, time + 0.003);
           ring.gain.exponentialRampToValueAtTime(0.0001, time + 0.6);
-          bell.connect(ring).connect(ctx.destination);
+          bell.connect(ring).connect(dest);
           bell.start(time);
           bell.stop(time + 0.65);
         }
@@ -232,7 +266,7 @@ class Metronome {
       body.frequency.value = accent ? 420 : 330;
       bodyGain.gain.setValueAtTime(accent ? 0.6 : 0.4, time);
       bodyGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.05);
-      body.connect(bodyGain).connect(ctx.destination);
+      body.connect(bodyGain).connect(dest);
       body.start(time);
       body.stop(time + 0.08);
     }

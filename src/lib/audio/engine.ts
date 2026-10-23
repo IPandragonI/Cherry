@@ -1,4 +1,6 @@
+import { useSyncExternalStore } from "react";
 import type { PitchReading } from "../pitch/analyzer";
+import { DEFAULT_RANGE, type AnalysisRange } from "../pitch/range";
 import type { WorkerCommand, WorkerEvent } from "./pitch-worker";
 import { setRecording } from "./audioSession";
 import { ReadingHold } from "./readingHold";
@@ -41,6 +43,8 @@ const IDLE: EngineSnapshot = { status: "idle", frequency: null, level: 0, info: 
 const WORKLET_URL = "/worklets/pitch-processor.js";
 const WORKER_URL = "/worklets/pitch-worker.js";
 const RESUME_TIMEOUT_MS = 400;
+/** The worker sends the recording this long after it should have finished, at the latest. */
+const RECORD_GRACE_MS = 3000;
 /** The analysis posts every ~21 ms; this much silence from it means the chain is dead. */
 const STALL_MS = 1500;
 const WATCHDOG_MS = 1000;
@@ -52,6 +56,9 @@ function errorStatus(error: unknown): MicStatus {
   if (name === "NotFoundError" || name === "OverconstrainedError") return "nomic";
   return "error";
 }
+
+/** The analysis worker script failed to load. */
+class WorkerLoadError extends Error {}
 
 /** True when the user has already blocked the microphone (no prompt would be shown). */
 async function permissionDenied(): Promise<boolean> {
@@ -111,7 +118,17 @@ class TunerEngine {
   private ctx: AudioContext | null = null;
   private stream: MediaStream | null = null;
   private worker: Worker | null = null;
-  private onRecording: ((samples: Float32Array, sampleRate: number) => void) | null = null;
+  private pendingRecording: {
+    resolve: (wav: Blob) => void;
+    reject: (error: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+  } | null = null;
+  /** Input gain (sensitivity), between the microphone and the worklet. */
+  private input: GainNode | null = null;
+  private range: AnalysisRange = DEFAULT_RANGE;
+  /** Chosen microphone, "" for the system default. */
+  private deviceId = "";
+  private gain = 1;
   private readonly hold = new ReadingHold();
   private watchdog: ReturnType<typeof setInterval> | null = null;
   private lastMessageAt = 0;
@@ -186,21 +203,57 @@ class TunerEngine {
 
   /**
    * Captures the raw microphone input (what the analysis hears) for the diagnostic, so a
-   * real-world problem can be replayed exactly. Resolves with a 16-bit mono WAV.
+   * real-world problem can be replayed exactly. Resolves with a 16-bit mono WAV; rejects if
+   * the microphone is released first or a recording is already under way.
    */
   record(seconds: number): Promise<Blob> {
     const worker = this.worker;
     if (!worker || this.snapshot.status !== "running") {
       return Promise.reject(new Error("not listening"));
     }
-    return new Promise((resolve) => {
-      this.onRecording = (samples, sampleRate) => {
-        this.onRecording = null;
-        resolve(encodeWav(samples, sampleRate));
-      };
+    if (this.pendingRecording) return Promise.reject(new Error("already recording"));
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(
+        () => this.finishRecording(new Error("recording timed out")),
+        seconds * 1000 + RECORD_GRACE_MS,
+      );
+      this.pendingRecording = { resolve, reject, timer };
       const command: WorkerCommand = { type: "record", seconds };
       worker.postMessage(command);
     });
+  }
+
+  private finishRecording(result: Blob | Error) {
+    const pending = this.pendingRecording;
+    if (!pending) return;
+    this.pendingRecording = null;
+    clearTimeout(pending.timer);
+    if (result instanceof Blob) pending.resolve(result);
+    else pending.reject(result);
+  }
+
+  /** The notes listened for (from the tuning): the analysis adapts its frequency band. */
+  setRange(range: AnalysisRange): void {
+    const r = this.range;
+    if (
+      range.minFrequency === r.minFrequency &&
+      range.maxFrequency === r.maxFrequency &&
+      range.highpassHz === r.highpassHz
+    )
+      return;
+    this.range = range;
+    const command: WorkerCommand = { type: "configure", range };
+    this.worker?.postMessage(command);
+  }
+
+  /** Microphone choice ("" = the system default) and input gain (sensitivity). */
+  setInput(deviceId: string, gain: number): void {
+    this.gain = gain;
+    if (this.input) this.input.gain.value = gain;
+    if (deviceId === this.deviceId) return;
+    this.deviceId = deviceId;
+    // Another microphone: rebuild the chain with it if listening.
+    if (this.stream && this.wanted && !this.userDisabled) void this.connect();
   }
 
   /** Ignores the microphone for a while, e.g. while a reference tone is playing. */
@@ -227,49 +280,95 @@ class TunerEngine {
         if (session === this.session) this.setSnapshot({ status: "denied" });
         return;
       }
-      // iOS: recording needs the play-and-record audio session (reference tones still play).
-      setRecording(true);
       // No channelCount constraint: some desktop drivers reject or ignore it. The worklet
       // mixes whatever channels arrive.
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-        video: false,
-      });
+      const audio: MediaTrackConstraints = {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+      };
+      if (this.deviceId) audio.deviceId = { exact: this.deviceId };
+      // iOS: recording needs the play-and-record audio session (reference tones still play).
+      // Teardown releases it, also when the request fails.
+      setRecording(true);
+      const stream = await navigator.mediaDevices
+        .getUserMedia({ audio, video: false })
+        .catch((error: unknown) => {
+          // The chosen microphone is gone (unplugged): fall back on the default one.
+          if (
+            audio.deviceId &&
+            error instanceof DOMException &&
+            error.name === "OverconstrainedError"
+          ) {
+            delete audio.deviceId;
+            return navigator.mediaDevices.getUserMedia({ audio, video: false });
+          }
+          throw error;
+        });
       if (session !== this.session) {
         stream.getTracks().forEach((t) => t.stop());
         return;
       }
       this.stream = stream;
+      const track = stream.getAudioTracks()[0];
 
-      const ctx = new AudioContext({ latencyHint: "interactive" });
+      let ctx = new AudioContext({ latencyHint: "interactive" });
       this.ctx = ctx;
+      let source: MediaStreamAudioSourceNode;
+      try {
+        source = ctx.createMediaStreamSource(stream);
+      } catch (error) {
+        // Some Firefox versions refuse a microphone running at another rate than the
+        // context: open the context at the microphone's own rate instead.
+        const rate = track?.getSettings().sampleRate;
+        if (!(error instanceof DOMException) || error.name !== "NotSupportedError" || !rate) {
+          throw error;
+        }
+        void ctx.close().catch(() => {});
+        ctx = new AudioContext({ latencyHint: "interactive", sampleRate: rate });
+        this.ctx = ctx;
+        source = ctx.createMediaStreamSource(stream);
+      }
       await ctx.audioWorklet.addModule(WORKLET_URL);
       if (session !== this.session) return;
 
-      const source = ctx.createMediaStreamSource(stream);
       const node = new AudioWorkletNode(ctx, "pitch-processor", { numberOfInputs: 1 });
+      // Sensitivity: the analysis also gates on an absolute level, so a quiet microphone
+      // can be brought up (or a hot interface input brought down).
+      const input = ctx.createGain();
+      input.gain.value = this.gain;
+      this.input = input;
       // A silent path to the destination keeps the node in the rendering graph everywhere.
       const mute = ctx.createGain();
       mute.gain.value = 0;
-      source.connect(node).connect(mute).connect(ctx.destination);
+      source.connect(input).connect(node).connect(mute).connect(ctx.destination);
       // The worklet only forwards samples; the analysis runs in a worker, connected to it
       // directly so neither the audio thread nor the UI thread does the heavy lifting.
-      const worker = new Worker(WORKER_URL);
+      const worker = await startWorker();
+      if (session !== this.session) return worker.terminate();
       this.worker = worker;
       const channel = new MessageChannel();
       const setup: WorkerCommand = {
         type: "setup",
         port: channel.port2,
         sampleRate: ctx.sampleRate,
+        range: this.range,
       };
       worker.postMessage(setup, [channel.port2]);
       node.port.postMessage({ port: channel.port1 }, [channel.port1]);
       worker.onmessage = ({ data }: MessageEvent<WorkerEvent>) => {
         if (data.type === "reading") this.onReading(data);
-        else this.onRecording?.(data.samples, data.sampleRate);
+        else if (data.type === "recording") {
+          this.finishRecording(encodeWav(data.samples, data.sampleRate));
+        }
+      };
+      // A crash later on: an error to show, not a chain for the watchdog to rebuild forever.
+      worker.onerror = () => {
+        if (session !== this.session) return;
+        this.teardown();
+        this.setSnapshot({ status: "error", frequency: null, level: 0 });
       };
 
-      const track = stream.getAudioTracks()[0];
       // Mobile OSes end the capture when the app is backgrounded or interrupted (phone
       // call, Siri…): rebuild as soon as the page is usable again. ("mute" is left alone:
       // an OS-level mute would otherwise cause a reconnect loop, and still delivers data.)
@@ -309,7 +408,9 @@ class TunerEngine {
     if (this.watchdog) clearInterval(this.watchdog);
     this.watchdog = null;
     GESTURES.forEach((g) => document.removeEventListener(g, this.onGesture, true));
-    if (this.stream) setRecording(false);
+    setRecording(false);
+    this.finishRecording(new Error("microphone released"));
+    this.input = null;
     this.stream?.getTracks().forEach((t) => t.stop());
     this.stream = null;
     this.worker?.terminate();
@@ -401,4 +502,35 @@ class TunerEngine {
   }
 }
 
+/**
+ * Loads the analysis worker and resolves once its script has run (it posts "ready"): a
+ * missing or broken script becomes an error instead of a silent chain that the watchdog
+ * would rebuild in a loop.
+ */
+function startWorker(): Promise<Worker> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(WORKER_URL);
+    worker.onerror = (event) => {
+      event.preventDefault();
+      worker.terminate();
+      reject(new WorkerLoadError("analysis worker failed to load"));
+    };
+    worker.onmessage = ({ data }: MessageEvent<WorkerEvent>) => {
+      if (data.type !== "ready") return;
+      worker.onerror = null;
+      worker.onmessage = null;
+      resolve(worker);
+    };
+  });
+}
+
 export const tunerEngine = new TunerEngine();
+
+/** One slice of the engine state: a component re-renders only when that slice changes. */
+export function useEngine<T>(select: (snapshot: EngineSnapshot) => T): T {
+  return useSyncExternalStore(
+    tunerEngine.subscribe,
+    () => select(tunerEngine.getSnapshot()),
+    () => select(tunerEngine.getServerSnapshot()),
+  );
+}

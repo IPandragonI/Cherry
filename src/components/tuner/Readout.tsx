@@ -27,8 +27,17 @@ export function Readout({
   const main = notation === "solfege" ? solfege : letter;
   const other = notation === "solfege" ? letter && `${letter}${octave}` : solfege;
 
+  const statusText = inTune
+    ? t("tuner.inTune")
+    : t(status === "noSignal" ? "tuner.noSignal" : `tuner.${status}`);
+
   return (
-    <div className="flex items-center gap-4 pl-6" aria-live="polite" aria-atomic="true">
+    <div className="flex items-center gap-4 pl-6">
+      {/* Announced to screen readers: the note and what to do, only when they change. The
+          frequency below changes with every reading and would be read out non-stop. */}
+      <p className="sr-only" aria-live="polite" aria-atomic="true">
+        {status === "noSignal" ? statusText : `${main ?? ""} ${statusText}`}
+      </p>
       <p
         className={`flex min-w-[76px] items-baseline font-display leading-none font-semibold ${
           main && main.length > 2 ? "text-[52px]" : "text-[64px]"

@@ -39,11 +39,6 @@ function useStrum() {
     playNotes(voicingFrequencies(frets, strings, a4), { strumMs: STRUM_MS });
 }
 
-const chip = (active: boolean) =>
-  `min-h-11 shrink-0 rounded-full px-4 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
-    active ? "bg-primary text-primary-content" : "bg-base-200 hover:bg-base-300"
-  }`;
-
 export function ChordLibrary() {
   const t = useT();
   const [root, setRoot] = useState("C");
@@ -78,42 +73,41 @@ export function ChordLibrary() {
         <Favorites />
       ) : (
         <>
-          <fieldset className="min-w-0">
-            <legend className="mb-1.5 text-xs font-semibold tracking-wide text-base-content/75 uppercase">
-              {t("chords.root")}
-            </legend>
-            <div className="-mx-4 flex [scrollbar-width:none] gap-1.5 overflow-x-auto px-4 pb-1">
-              {NOTE_NAMES.map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  aria-pressed={n === root}
-                  onClick={() => setRoot(n)}
-                  className={`${chip(n === root)} w-12 px-0`}
-                >
-                  {displayNote(n)}
-                </button>
-              ))}
-            </div>
-          </fieldset>
-          <fieldset className="min-w-0">
-            <legend className="mb-1.5 text-xs font-semibold tracking-wide text-base-content/75 uppercase">
-              {t("chords.quality")}
-            </legend>
-            <div className="-mx-4 flex [scrollbar-width:none] gap-1.5 overflow-x-auto px-4 pb-1">
-              {LIBRARY_QUALITIES.map((q) => (
-                <button
-                  key={q.id}
-                  type="button"
-                  aria-pressed={q.id === quality}
-                  onClick={() => setQuality(q.id)}
-                  className={chip(q.id === quality)}
-                >
-                  {t(`quality.${q.id}` as Parameters<typeof t>[0])}
-                </button>
-              ))}
-            </div>
-          </fieldset>
+          {/* Root and type side by side: two compact menus instead of two scrolling rows. */}
+          <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-2">
+            <label className="min-w-0">
+              <span className="mb-1 block text-xs font-semibold tracking-wide text-base-content/75 uppercase">
+                {t("chords.root")}
+              </span>
+              <select
+                className="select w-full font-semibold"
+                value={root}
+                onChange={(e) => setRoot(e.target.value)}
+              >
+                {NOTE_NAMES.map((n) => (
+                  <option key={n} value={n}>
+                    {displayNote(n)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="min-w-0">
+              <span className="mb-1 block text-xs font-semibold tracking-wide text-base-content/75 uppercase">
+                {t("chords.quality")}
+              </span>
+              <select
+                className="select w-full font-semibold"
+                value={quality}
+                onChange={(e) => setQuality(e.target.value)}
+              >
+                {LIBRARY_QUALITIES.map((q) => (
+                  <option key={q.id} value={q.id}>
+                    {t(`quality.${q.id}` as Parameters<typeof t>[0])}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
           <ChordCard key={`${root}-${quality}`} root={root} quality={quality} />
           <ChordDetails root={root} quality={quality} />
         </>
@@ -236,18 +230,6 @@ function ChordCard({ root, quality }: { root: string; quality: string }) {
         >
           <ChevronRightIcon width={22} height={22} />
         </button>
-      </div>
-
-      <div className="mt-1 text-center" aria-live="polite">
-        <p className="text-sm font-medium text-base-content/75">
-          {t("chords.voicing", { n: Math.min(index, total - 1) + 1, total })}
-        </p>
-        <p
-          className="mt-1 font-mono text-xl font-semibold tracking-[0.3em]"
-          aria-label={`${t("chords.fingering")} : ${fretsLabel(current.frets)}`}
-        >
-          {fretsLabel(current.frets)}
-        </p>
       </div>
 
       {total > 1 && (

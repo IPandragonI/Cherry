@@ -3,6 +3,7 @@ import { Fraunces, Instrument_Sans } from "next/font/google";
 import { SerwistProvider } from "@serwist/turbopack/react";
 import { StoreHydration } from "@/components/StoreHydration";
 import { ThemeSync } from "@/components/ThemeSync";
+import { UpdatePrompt } from "@/components/UpdatePrompt";
 import { SETTINGS_STORAGE_KEY } from "@/store/settings";
 import "./globals.css";
 
@@ -71,6 +72,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         >
           {/* Fades in once at startup (this layout persists across tab changes). */}
           <div className="app-enter">{children}</div>
+          <UpdatePrompt />
         </SerwistProvider>
       </body>
     </html>

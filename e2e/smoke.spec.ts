@@ -1,9 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
 
-/** Seeds persisted settings before the app boots. */
+/** Seeds persisted settings before the app boots (the microphone intro already seen). */
 async function withSettings(page: Page, state: Record<string, unknown>) {
   await page.addInitScript((s) => {
-    localStorage.setItem("cherry-settings", JSON.stringify({ state: s, version: 1 }));
+    localStorage.setItem(
+      "cherry-settings",
+      JSON.stringify({ state: { micIntroSeen: true, ...s }, version: 1 }),
+    );
   }, state);
 }
 
@@ -13,17 +16,30 @@ test("tuner renders in demo mode and reacts to the simulated deviation", async (
   await expect(page.getByRole("button", { name: /Corde 5, A, sélectionnée/ })).toBeVisible();
   const slider = page.getByRole("slider", { name: "Écart simulé" });
   await slider.fill("0");
-  await expect(page.getByText("Corde accordée")).toBeVisible();
+  // Exact: the screen-reader announcement repeats it after the note name.
+  await expect(page.getByText("Corde accordée", { exact: true })).toBeVisible();
   await slider.fill("-20");
-  await expect(page.getByText("Trop bas, serrez la corde")).toBeVisible();
+  await expect(page.getByText("Trop bas, serrez la corde", { exact: true })).toBeVisible();
 });
 
-test("tab bar navigates between the four tabs", async ({ page }) => {
+test("the mode button cycles auto → manual → chromatic", async ({ page }) => {
+  await withSettings(page, { locale: "fr", demo: true, mode: "auto" });
+  await page.goto("/");
+  const mode = page.getByRole("button", { name: /^Mode :/ });
+  await expect(mode).toHaveText("Auto");
+  await mode.click();
+  await expect(mode).toHaveText("Manuel");
+  await mode.click();
+  await expect(mode).toHaveText("Chromatique");
+});
+
+test("tab bar navigates between the five tabs", async ({ page }) => {
   await withSettings(page, { locale: "fr" });
   await page.goto("/");
   for (const [label, path] of [
     ["Accords", "/chords"],
     ["Trouveur", "/finder"],
+    ["Métronome", "/metronome"],
     ["Réglages", "/settings"],
     ["Accordeur", "/"],
   ]) {

@@ -4,12 +4,14 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { ChevronRightIcon, TrashIcon } from "@/components/ui/icons";
 import { AudioDiagnostic } from "./AudioDiagnostic";
+import { InputSettings } from "./InputSettings";
 import { useT } from "@/lib/i18n/useT";
 import { DEFAULT_A4, MAX_A4, MIN_A4 } from "@/lib/music/notes";
 import {
   DEFAULT_SETTINGS,
   SETTINGS_STORAGE_KEY,
   useSettings,
+  type GaugeStyle,
   type LocalePref,
   type NotationPref,
   type ThemePref,
@@ -18,6 +20,7 @@ import { useFavorites } from "@/store/favorites";
 import { useCustomTunings } from "@/store/tunings";
 
 const THEMES: ThemePref[] = ["system", "light", "dark"];
+const GAUGE_STYLES: GaugeStyle[] = ["needle", "strobe"];
 const A4_PRESETS = [432, 440, 442, 444];
 const STORAGE_KEYS = [SETTINGS_STORAGE_KEY, "cherry-tunings", "cherry-favorites"];
 const TOGGLES = [
@@ -101,12 +104,13 @@ export function SettingsScreen() {
                 s.a4 === DEFAULT_A4 ? "text-primary" : "text-warning"
               }`}
             >
-              {s.a4} Hz
+              {Number.isInteger(s.a4) ? s.a4 : s.a4.toFixed(1)} Hz
             </span>
           </div>
           {/* Steppers and presets only: a slider here could be nudged while scrolling the
-              page, silently shifting every reading (444 Hz reads −16 cents everywhere). */}
-          <div role="group" aria-labelledby="a4-label" className="flex items-center gap-2">
+              page, silently shifting every reading (444 Hz reads −16 cents everywhere).
+              The outer buttons step by 1 Hz, the inner ones by 0.1 Hz. */}
+          <div role="group" aria-labelledby="a4-label" className="flex items-center gap-1">
             <button
               type="button"
               className="btn btn-circle size-11 bg-base-100 btn-ghost text-lg"
@@ -116,7 +120,16 @@ export function SettingsScreen() {
             >
               −
             </button>
-            <div className="grid flex-1 grid-cols-4 gap-1">
+            <button
+              type="button"
+              className="btn btn-circle size-9 bg-base-100 btn-ghost text-xs"
+              aria-label={`${t("settings.a4")} −0.1 Hz`}
+              disabled={s.a4 <= MIN_A4}
+              onClick={() => s.setA4(s.a4 - 0.1)}
+            >
+              −.1
+            </button>
+            <div className="grid min-w-0 flex-1 grid-cols-4 gap-1">
               {A4_PRESETS.map((hz) => (
                 <button
                   key={hz}
@@ -133,6 +146,15 @@ export function SettingsScreen() {
                 </button>
               ))}
             </div>
+            <button
+              type="button"
+              className="btn btn-circle size-9 bg-base-100 btn-ghost text-xs"
+              aria-label={`${t("settings.a4")} +0.1 Hz`}
+              disabled={s.a4 >= MAX_A4}
+              onClick={() => s.setA4(s.a4 + 0.1)}
+            >
+              +.1
+            </button>
             <button
               type="button"
               className="btn btn-circle size-11 bg-base-100 btn-ghost text-lg"
@@ -174,6 +196,31 @@ export function SettingsScreen() {
       </section>
 
       <section className="divide-y divide-base-300 rounded-box bg-base-200 px-4">
+        <div className="py-3">
+          <p id="gauge-label" className="mb-2 font-medium">
+            {t("settings.gaugeStyle")}
+          </p>
+          <div
+            role="radiogroup"
+            aria-labelledby="gauge-label"
+            className="grid grid-cols-2 gap-1 rounded-full bg-base-100 p-1"
+          >
+            {GAUGE_STYLES.map((style) => (
+              <button
+                key={style}
+                type="button"
+                role="radio"
+                aria-checked={s.gaugeStyle === style}
+                onClick={() => s.set({ gaugeStyle: style })}
+                className={`min-h-11 rounded-full text-sm font-semibold transition-colors ${
+                  s.gaugeStyle === style ? "bg-primary text-primary-content" : "hover:bg-base-200"
+                }`}
+              >
+                {t(`settings.gaugeStyle.${style}`)}
+              </button>
+            ))}
+          </div>
+        </div>
         {TOGGLES.map(([key, label]) => (
           <Row key={key} label={t(label)} htmlFor={`opt-${key}`}>
             <input
@@ -186,6 +233,8 @@ export function SettingsScreen() {
           </Row>
         ))}
       </section>
+
+      <InputSettings />
 
       <AudioDiagnostic />
 
