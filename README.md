@@ -89,7 +89,9 @@ draws. The analysis is pure TypeScript shared by the worker and the tests:
    out of the estimate. The value shown is the **perceived pitch**: led by the 2nd to 4th
    harmonics, as the ear's is, rather than by the fundamental, which an acoustic guitar's
    body pulls a few cents flat. Nothing is shown when no harmonic consensus confirms the
-   pitch.
+   pitch. Until that spectrum is clear of the previous note (~230 ms after a pluck), the
+   same measurement runs on the 4096-point spectrum of the period window, so a reading
+   appears ~160 ms after the pluck; the precise value then replaces it at once.
 4. Tracker: outliers ignored unless 3 frames confirm a jump, 7-frame median, EMA that speeds up when the pitch moves steadily (a peg turned: ~100 ms to settle);
    a note is only shown shortly after a pluck (or sound rising out of silence), and its
    value freezes once it has decayed by ~18 dB, so the quiet tail and strings ringing

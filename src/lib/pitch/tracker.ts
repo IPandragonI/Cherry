@@ -217,6 +217,17 @@ export class PitchTracker {
     return this.output();
   }
 
+  /** The measurement became more precise: forget the values so far, but stay locked. */
+  resettle(): void {
+    this.history = [];
+    this.medians = [];
+    this.candidates = [];
+    this.smoothed = null;
+    this.trend = 0;
+    this.lastTarget = null;
+    this.catchingUp = false;
+  }
+
   reset(): void {
     this.history = [];
     this.invalidFrames = 0;

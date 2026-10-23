@@ -27,14 +27,22 @@ function readings(file: string, midi: number) {
   return cents;
 }
 
+/** Readings before the precise (long) spectrum takes over after a pluck: ~110 ms. */
+const PROVISIONAL_READINGS = 5;
+
 describe("acoustic D3 (user recording)", () => {
   const cents = readings("D3-acoustic-user.wav", 50);
 
   it("gives a steady reading (no −8 ↔ −12 oscillation)", () => {
     expect(cents.length).toBeGreaterThan(100);
-    const steps = cents.slice(1).map((c, i) => Math.abs(c - cents[i]));
+    // The first readings come from the short spectrum, a few cents off on this guitar (the
+    // attack): they are replaced once by the precise value, which then holds still.
+    const early = cents.slice(0, PROVISIONAL_READINGS);
+    const precise = cents.slice(PROVISIONAL_READINGS);
+    expect(Math.max(...early.map((c) => Math.abs(c + 8)))).toBeLessThan(5);
+    const steps = precise.slice(1).map((c, i) => Math.abs(c - precise[i]));
     expect(Math.max(...steps)).toBeLessThan(0.5);
-    expect(Math.max(...cents) - Math.min(...cents)).toBeLessThan(2);
+    expect(Math.max(...precise) - Math.min(...precise)).toBeLessThan(2);
   });
 
   it("reads the pitch heard, from the partials: a D about 8 cents flat at A4 = 440 Hz", () => {

@@ -81,6 +81,8 @@ export class PitchAnalyzer {
   private readonly options: AnalyzerOptions;
   private readonly detector: BandedMpm;
   private readonly refiner: PartialRefiner;
+  /** Same measurement in the period window's shorter spectrum, clean sooner after a pluck. */
+  private readonly quick: PartialRefiner;
   private readonly filters: Biquad[];
   private readonly ring: Float32Array;
   /** The newest `spectrumSize` samples, oldest first. */
@@ -99,6 +101,8 @@ export class PitchAnalyzer {
   private lastCoarse: number | null = null;
   /** A different pitch seen once; it becomes a note change if the next hop confirms it. */
   private pendingCoarse: number | null = null;
+  /** The tracker holds early values from the short spectrum, to replace by precise ones. */
+  private provisional = false;
   readonly tracker: PitchTracker;
 
   constructor(
@@ -116,6 +120,7 @@ export class PitchAnalyzer {
       tracker.maxFrequency,
     );
     this.refiner = new PartialRefiner(spectrumSize, sampleRate, hopSize);
+    this.quick = new PartialRefiner(windowSize, sampleRate, hopSize);
     this.filters = [
       Biquad.highpass(sampleRate, highpassHz),
       ...humHz.map((hz) => Biquad.notch(sampleRate, hz)),
@@ -133,15 +138,18 @@ export class PitchAnalyzer {
    * along), so when the two disagree the partials decide, and when nothing confirms the
    * pitch, nothing is shown rather than a doubtful number.
    */
-  private precise(coarse: PitchEstimate): { frequency: number; clarity: number } | null {
+  private precise(
+    coarse: PitchEstimate,
+    refiner: PartialRefiner,
+  ): { frequency: number; clarity: number } | null {
     const cents = (a: number, b: number) => Math.abs(1200 * Math.log2(a / b));
     const confirmed = (r: RefinedPitch | null) =>
       r !== null && r.support >= 3 && r.agreement >= 0.5;
-    let refined = this.refiner.refine(coarse.frequency);
+    let refined = refiner.refine(coarse.frequency);
     // Far from the period estimate: search again around the partials' own value, so every
     // harmonic window is centred on the real pitch.
     if (refined && cents(refined.frequency, coarse.frequency) > this.options.maxRefineCents) {
-      const again = this.refiner.refine(refined.frequency);
+      const again = refiner.refine(refined.frequency);
       refined = confirmed(again) ? again : refined;
     }
     if (confirmed(refined)) {
@@ -167,6 +175,7 @@ export class PitchAnalyzer {
     this.lastCoarse = null;
     this.pendingCoarse = null;
     this.refiner.reset();
+    this.quick.reset();
   }
 
   /** Feeds samples; returns a reading for every completed hop (usually 0 or 1). */
@@ -194,6 +203,7 @@ export class PitchAnalyzer {
     // Every hop, so consecutive spectra are exactly one hop apart (phase vocoder).
     this.refiner.analyse(this.frame);
     const window = this.frame.subarray(spectrumSize - windowSize);
+    this.quick.analyse(window);
 
     let sum = 0;
     for (let i = 0; i < windowSize; i++) sum += window[i] * window[i];
@@ -255,15 +265,25 @@ export class PitchAnalyzer {
     }
     if (coarse && !outlier) this.lastCoarse = coarse.frequency;
     if (this.attackLeft > 0) this.attackLeft--;
-    // Right after a pluck the spectrum still holds the previous note: wait for it to be
-    // clean (~170 ms, like hardware tuners) rather than show a less precise period value.
-    if (coarse && !this.refiner.ready) coarse = null;
+    // Right after a pluck the long spectrum still holds the previous note for ~170 ms.
+    // Meanwhile the partials are measured in the period window's own spectrum (half the
+    // resolution, but clean in ~130 ms), so the note shows up sooner; never a bare period
+    // value, which can be tens of cents off.
+    const refiner = this.refiner.ready ? this.refiner : this.quick.ready ? this.quick : null;
+    if (!refiner) coarse = null;
     let estimate: { frequency: number; clarity: number } | null = null;
     if (coarse && outlier) {
       // Unconfirmed jump: hand it over as is, the tracker rejects lone outliers.
       estimate = coarse;
-    } else if (coarse) {
-      estimate = this.precise(coarse);
+    } else if (coarse && refiner) {
+      estimate = this.precise(coarse, refiner);
+      if (estimate && refiner === this.quick) {
+        this.provisional = true;
+      } else if (estimate && this.provisional) {
+        // The precise value replaces the early one at once instead of creeping towards it.
+        this.provisional = false;
+        this.tracker.resettle();
+      }
     }
     return {
       frequency: this.tracker.update(estimate ? { ...estimate, rms } : null),
